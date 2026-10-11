@@ -1,6 +1,8 @@
+node_modules
+dist
+.vite
+frontend/node_modules
+frontend/dist
+frontend/.vite
+*.zip
 .DS_Store
-Thumbs.db
-node_modules/
-*.log
-.env
-.env.local

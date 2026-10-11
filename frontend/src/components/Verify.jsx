@@ -1,0 +1,1164 @@
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import gsap from 'gsap'
+import Passport3D from './Passport3D.jsx'
+import ErrorBoundary from './ErrorBoundary.jsx'
+import { RM } from '../lib.js'
+import {
+  validateIntake,
+  SAMPLE_RESUME_TEXT,
+  SAMPLE_GITHUB_URL,
+  SAMPLE_TARGET_ROLE,
+  executeStep1Read,
+  executeStep2Propose,
+  executeStep3CheckEvidence,
+  executeStep4Authorship,
+  executeStep5AssignStates,
+  generateMicroChecks,
+  evaluateMicroCheck,
+  executeStep7RoleMatch,
+  executeStep8IssuePassport,
+  verifyPassportIntegrity,
+  simulateTamperEdit,
+} from '../engine/index.js'
+
+const STEP_DEFINITIONS = [
+  { id: 0, title: 'Intake', subtitle: 'Form and consent' },
+  { id: 1, title: 'Read', subtitle: 'Parse resume and repo' },
+  { id: 2, title: 'Propose', subtitle: 'Model skill pointers' },
+  { id: 3, title: 'Check evidence', subtitle: 'Hash and file check' },
+  { id: 4, title: 'Authorship', subtitle: 'Blame and usage depth' },
+  { id: 5, title: 'Assign states', subtitle: 'Trust ceilings' },
+  { id: 6, title: 'Micro-checks', subtitle: 'Code trade-off questions' },
+  { id: 7, title: 'Role match', subtitle: 'Evidence-weighted match' },
+  { id: 8, title: 'Issue passport', subtitle: 'SHA-256 seal' },
+]
+
+export default function Verify() {
+  const [currentStep, setCurrentStep] = useState(0)
+  const [highestUnlockedStep, setHighestUnlockedStep] = useState(0)
+  const [stepStatus, setStepStatus] = useState({
+    0: 'running',
+    1: 'waiting',
+    2: 'waiting',
+    3: 'waiting',
+    4: 'waiting',
+    5: 'waiting',
+    6: 'waiting',
+    7: 'waiting',
+    8: 'waiting',
+  })
+
+  // Live log lines
+  const [logs, setLogs] = useState([
+    `[${new Date().toLocaleTimeString()}] System ready. Step 0 (Intake) active. Please provide a resume and evidence source.`,
+  ])
+
+  // Form State (Step 0)
+  const [resumeMode, setResumeMode] = useState('paste')
+  const [resumeText, setResumeText] = useState('')
+  const [resumeFile, setResumeFile] = useState(null)
+  const [evidenceMode, setEvidenceMode] = useState('github')
+  const [githubUrl, setGithubUrl] = useState('')
+  const [zipFile, setZipFile] = useState(null)
+  const [certInput, setCertInput] = useState('')
+  const [targetRole, setTargetRole] = useState('')
+  const [consentAi, setConsentAi] = useState(false)
+  const [consentRepo, setConsentRepo] = useState(false)
+  const [formErrors, setFormErrors] = useState({})
+
+  // Pipeline Data Storage
+  const [intakeData, setIntakeData] = useState(null)
+  const [readData, setReadData] = useState(null)
+  const [proposeData, setProposeData] = useState(null)
+  const [evidenceData, setEvidenceData] = useState(null)
+  const [authorshipData, setAuthorshipData] = useState(null)
+  const [statesData, setStatesData] = useState(null)
+  const [microChecks, setMicroChecks] = useState([])
+  const [roleMatchData, setRoleMatchData] = useState(null)
+  const [passportData, setPassportData] = useState(null)
+
+  // Step Execution & Error states
+  const [stepError, setStepError] = useState(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  // Step 8 Verification / Tamper state
+  const [hashCheckResult, setHashCheckResult] = useState(null)
+  const [activeResultTab, setActiveResultTab] = useState('Candidate')
+
+  // Refs for animations and auto-scroll
+  const contentCardRef = useRef(null)
+  const logTerminalRef = useRef(null)
+  const progressDummy = useRef(0)
+
+  const addLog = (message) => {
+    const time = new Date().toLocaleTimeString()
+    setLogs((prev) => [...prev, `[${time}] ${message}`])
+  }
+
+  // Auto-scroll log console
+  useEffect(() => {
+    if (logTerminalRef.current) {
+      logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight
+    }
+  }, [logs])
+
+  // GSAP Step Transition animation
+  useEffect(() => {
+    if (RM || !contentCardRef.current) return
+    gsap.fromTo(
+      contentCardRef.current,
+      { opacity: 0, y: 14 },
+      { opacity: 1, y: 0, duration: 0.35, ease: 'power2.out' }
+    )
+  }, [currentStep])
+
+  // Helper to load sample data for rapid testing
+  const handleLoadSample = () => {
+    setResumeMode('paste')
+    setResumeText(SAMPLE_RESUME_TEXT)
+    setEvidenceMode('github')
+    setGithubUrl(SAMPLE_GITHUB_URL)
+    setTargetRole(SAMPLE_TARGET_ROLE)
+    setCertInput('AWS Certified Cloud Practitioner (2023)')
+    setConsentAi(true)
+    setConsentRepo(true)
+    setFormErrors({})
+    addLog('Sample dataset loaded for Alex Rivera: Senior Full Stack TypeScript Engineer.')
+  }
+
+  // STEP 0: Start Verification Form Submission
+  const handleStartVerification = async () => {
+    const formPayload = {
+      resumeText,
+      resumeFile,
+      githubUrl: evidenceMode === 'github' ? githubUrl : '',
+      zipFile: evidenceMode === 'zip' ? zipFile : null,
+      targetRole,
+      consentAi,
+      consentRepo,
+    }
+
+    const { valid, errors } = validateIntake(formPayload)
+    if (!valid) {
+      setFormErrors(errors)
+      addLog('Validation error: Required intake fields are incomplete or consent is missing.')
+      return
+    }
+
+    setFormErrors({})
+    setIntakeData(formPayload)
+    setStepStatus((s) => ({ ...s, 0: 'done', 1: 'running' }))
+    setHighestUnlockedStep((h) => Math.max(h, 1))
+    setCurrentStep(1)
+    addLog('Intake validated. Progressing to Step 1: Read.')
+
+    // Auto-execute Step 1
+    runStep1(formPayload)
+  }
+
+  // STEP 1 EXECUTION
+  const runStep1 = async (inputForm) => {
+    setIsProcessing(true)
+    setStepError(null)
+    setStepStatus((s) => ({ ...s, 1: 'running' }))
+
+    try {
+      const data = await executeStep1Read(inputForm || intakeData, addLog)
+      setReadData(data)
+      setStepStatus((s) => ({ ...s, 1: data.fetchError ? 'flagged' : 'done' }))
+      setHighestUnlockedStep((h) => Math.max(h, 2))
+    } catch (err) {
+      setStepError(`Step 1 Read Error: ${err.message}`)
+      setStepStatus((s) => ({ ...s, 1: 'flagged' }))
+      addLog(`Error in Step 1: ${err.message}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // STEP 2 EXECUTION
+  const runStep2 = async () => {
+    setIsProcessing(true)
+    setStepError(null)
+    setStepStatus((s) => ({ ...s, 2: 'running' }))
+
+    try {
+      const data = await executeStep2Propose(readData, addLog)
+      setProposeData(data)
+      setStepStatus((s) => ({ ...s, 2: 'done' }))
+      setHighestUnlockedStep((h) => Math.max(h, 3))
+    } catch (err) {
+      setStepError(`Step 2 Propose Error: ${err.message}`)
+      setStepStatus((s) => ({ ...s, 2: 'flagged' }))
+      addLog(`Error in Step 2: ${err.message}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // STEP 3 EXECUTION
+  const runStep3 = async () => {
+    setIsProcessing(true)
+    setStepError(null)
+    setStepStatus((s) => ({ ...s, 3: 'running' }))
+
+    try {
+      const data = await executeStep3CheckEvidence(proposeData, readData, addLog)
+      setEvidenceData(data)
+      setStepStatus((s) => ({ ...s, 3: data.flaggedCount > 0 ? 'flagged' : 'done' }))
+      setHighestUnlockedStep((h) => Math.max(h, 4))
+    } catch (err) {
+      setStepError(`Step 3 Check Evidence Error: ${err.message}`)
+      setStepStatus((s) => ({ ...s, 3: 'flagged' }))
+      addLog(`Error in Step 3: ${err.message}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // STEP 4 EXECUTION
+  const runStep4 = async () => {
+    setIsProcessing(true)
+    setStepError(null)
+    setStepStatus((s) => ({ ...s, 4: 'running' }))
+
+    try {
+      const data = await executeStep4Authorship(evidenceData, readData, addLog)
+      setAuthorshipData(data)
+      setStepStatus((s) => ({ ...s, 4: 'done' }))
+      setHighestUnlockedStep((h) => Math.max(h, 5))
+    } catch (err) {
+      setStepError(`Step 4 Authorship Error: ${err.message}`)
+      setStepStatus((s) => ({ ...s, 4: 'flagged' }))
+      addLog(`Error in Step 4: ${err.message}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // STEP 5 EXECUTION
+  const runStep5 = async () => {
+    setIsProcessing(true)
+    setStepError(null)
+    setStepStatus((s) => ({ ...s, 5: 'running' }))
+
+    try {
+      const data = await executeStep5AssignStates(authorshipData, readData, addLog)
+      setStatesData(data)
+      const initialChecks = generateMicroChecks(data.skillStates, addLog)
+      setMicroChecks(initialChecks)
+      setStepStatus((s) => ({ ...s, 5: 'done' }))
+      setHighestUnlockedStep((h) => Math.max(h, 6))
+    } catch (err) {
+      setStepError(`Step 5 Assign States Error: ${err.message}`)
+      setStepStatus((s) => ({ ...s, 5: 'flagged' }))
+      addLog(`Error in Step 5: ${err.message}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // STEP 6: Handle Micro-check answer submission
+  const handleAnswerMicroCheck = (skillName, answer) => {
+    const targetCheck = microChecks.find((m) => m.skill === skillName)
+    if (!targetCheck) return
+
+    const evaluation = evaluateMicroCheck(targetCheck, answer, addLog)
+    
+    setMicroChecks((prev) =>
+      prev.map((m) => (m.skill === skillName ? { ...m, answered: true, passed: evaluation.passed, userAnswer: answer, feedback: evaluation.feedback } : m))
+    )
+
+    if (evaluation.passed) {
+      // Upgrade skill in statesData from 'S' to 'V'
+      setStatesData((prev) => {
+        const updated = prev.skillStates.map((s) => (s.skill === skillName ? { ...s, state: 'V', evidence: `${s.evidence}, micro-check passed` } : s))
+        const counts = {
+          V: updated.filter((s) => s.state === 'V').length,
+          S: updated.filter((s) => s.state === 'S').length,
+          C: updated.filter((s) => s.state === 'C').length,
+          X: updated.filter((s) => s.state === 'X').length,
+        }
+        return { ...prev, skillStates: updated, counts }
+      })
+    }
+  }
+
+  const completeStep6 = () => {
+    setStepStatus((s) => ({ ...s, 6: 'done' }))
+    setHighestUnlockedStep((h) => Math.max(h, 7))
+    setCurrentStep(7)
+    runStep7()
+  }
+
+  // STEP 7 EXECUTION
+  const runStep7 = async () => {
+    setIsProcessing(true)
+    setStepError(null)
+    setStepStatus((s) => ({ ...s, 7: 'running' }))
+
+    try {
+      const data = executeStep7RoleMatch(statesData.skillStates, intakeData?.targetRole || 'Senior Full Stack TypeScript Engineer', addLog)
+      setRoleMatchData(data)
+      setStepStatus((s) => ({ ...s, 7: 'done' }))
+      setHighestUnlockedStep((h) => Math.max(h, 8))
+    } catch (err) {
+      setStepError(`Step 7 Role Match Error: ${err.message}`)
+      setStepStatus((s) => ({ ...s, 7: 'flagged' }))
+      addLog(`Error in Step 7: ${err.message}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // STEP 8 EXECUTION
+  const runStep8 = async () => {
+    setIsProcessing(true)
+    setStepError(null)
+    setStepStatus((s) => ({ ...s, 8: 'running' }))
+
+    try {
+      const data = await executeStep8IssuePassport(statesData.skillStates, intakeData?.targetRole || 'Senior Full Stack TypeScript Engineer', 'Alex Rivera', addLog)
+      setPassportData(data)
+      setStepStatus((s) => ({ ...s, 8: 'done' }))
+      addLog('Verification pipeline completed. Passport issued and sealed.')
+    } catch (err) {
+      setStepError(`Step 8 Issue Passport Error: ${err.message}`)
+      setStepStatus((s) => ({ ...s, 8: 'flagged' }))
+      addLog(`Error in Step 8: ${err.message}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // Verify passport hash
+  const handleVerifyHash = async () => {
+    if (!passportData) return
+    const res = await verifyPassportIntegrity(passportData.passport.skills, passportData.hash)
+    setHashCheckResult(res)
+    addLog(`Hash Check: ${res.message}`)
+  }
+
+  // Simulate an edit tamper
+  const handleSimulateTamper = async () => {
+    if (!passportData) return
+    const tampered = await simulateTamperEdit(passportData.passport.skills)
+    const res = await verifyPassportIntegrity(tampered.tamperedSkills, passportData.hash)
+    setHashCheckResult(res)
+    addLog(`Tamper Simulation: Altered first skill state. Hash recomputed: ${tampered.newHash.slice(0, 16)}... != original. Tamper detected.`)
+  }
+
+  // Stepper navigation
+  const handleStepClick = (stepId) => {
+    if (stepId <= highestUnlockedStep) {
+      setCurrentStep(stepId)
+    }
+  }
+
+  return (
+    <div className="verify-page">
+      <div className="w verify-layout">
+        {/* LEFT COLUMN: PERSISTENT VERTICAL STEPPER */}
+        <aside className="verify-stepper-sidebar" aria-label="Verification Pipeline Stepper">
+          <div className="stepper-header">
+            <span className="k m">PIPELINE STEPPER</span>
+            <span className="stepper-count m">STEP 0{currentStep} OF 08</span>
+          </div>
+
+          <nav className="stepper-nav">
+            {STEP_DEFINITIONS.map((s) => {
+              const isCurrent = currentStep === s.id
+              const isDone = stepStatus[s.id] === 'done'
+              const isFlagged = stepStatus[s.id] === 'flagged'
+              const isLocked = s.id > highestUnlockedStep
+
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`stepper-item ${isCurrent ? 'current' : ''} ${isDone ? 'done' : ''} ${isFlagged ? 'flagged' : ''} ${isLocked ? 'locked' : ''}`}
+                  onClick={() => handleStepClick(s.id)}
+                  disabled={isLocked}
+                  aria-current={isCurrent ? 'step' : undefined}
+                >
+                  <div className="step-badge">
+                    <span className="step-idx m">{isDone ? 'OK' : `0${s.id}`}</span>
+                  </div>
+                  <div className="step-meta">
+                    <div className="step-name">{s.title}</div>
+                    <div className="step-sub m">{s.subtitle}</div>
+                  </div>
+                  <div className="step-state-tag m">
+                    {isCurrent ? '[Active]' : isDone ? '[Done]' : isFlagged ? '[Flagged]' : isLocked ? '[Locked]' : '[Waiting]'}
+                  </div>
+                </button>
+              )
+            })}
+          </nav>
+        </aside>
+
+        {/* RIGHT COLUMN: CURRENT STEP CONTENT IN IVORY CARDS + LOG PANEL */}
+        <main className="verify-main-content">
+          <div className="step-card" ref={contentCardRef}>
+            {/* Step Header with aria-live */}
+            <div className="step-card-header">
+              <div>
+                <span className="k m">STEP 0{currentStep} / 08</span>
+                <h2>{STEP_DEFINITIONS[currentStep].title}</h2>
+              </div>
+              <div className="step-status-indicator m" aria-live="polite">
+                STATUS: {stepStatus[currentStep].toUpperCase()}
+              </div>
+            </div>
+
+            {/* Error Message with Retry Button */}
+            {stepError && (
+              <div className="step-error-banner" role="alert">
+                <strong>Step Alert:</strong> {stepError}
+                <button
+                  type="button"
+                  className="b sm"
+                  onClick={() => {
+                    if (currentStep === 1) runStep1()
+                    else if (currentStep === 2) runStep2()
+                    else if (currentStep === 3) runStep3()
+                    else if (currentStep === 4) runStep4()
+                    else if (currentStep === 5) runStep5()
+                    else if (currentStep === 7) runStep7()
+                    else if (currentStep === 8) runStep8()
+                  }}
+                >
+                  Retry step
+                </button>
+              </div>
+            )}
+
+            {/* STEP 0: INTAKE FORM */}
+            {currentStep === 0 && (
+              <div className="intake-form-pane">
+                <p className="step-desc">
+                  Provide candidate resume, code evidence source, and target role to initialize the deterministic verification pipeline.
+                </p>
+
+                <div className="preset-bar">
+                  <span className="m">Testing shortcut:</span>
+                  <button type="button" className="b g sm" onClick={handleLoadSample}>
+                    Load sample candidate input
+                  </button>
+                </div>
+
+                {/* 1. Resume Input */}
+                <div className="form-group">
+                  <label className="form-label">
+                    1. Candidate Resume <span className="req">*</span>
+                  </label>
+                  <div className="mode-toggle">
+                    <button
+                      type="button"
+                      className={`mode-btn ${resumeMode === 'paste' ? 'on' : ''}`}
+                      onClick={() => setResumeMode('paste')}
+                    >
+                      Paste resume text
+                    </button>
+                    <button
+                      type="button"
+                      className={`mode-btn ${resumeMode === 'upload' ? 'on' : ''}`}
+                      onClick={() => setResumeMode('upload')}
+                    >
+                      Upload PDF or DOCX
+                    </button>
+                  </div>
+
+                  {resumeMode === 'paste' ? (
+                    <textarea
+                      rows={6}
+                      className="form-textarea"
+                      placeholder="Paste resume text including summary, technical skills, and work history..."
+                      value={resumeText}
+                      onChange={(e) => setResumeText(e.target.value)}
+                    />
+                  ) : (
+                    <div className="file-input-wrapper">
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt"
+                        onChange={(e) => setResumeFile(e.target.files[0])}
+                      />
+                      {resumeFile && <span className="m file-hint">Selected: {resumeFile.name}</span>}
+                    </div>
+                  )}
+                  {formErrors.resume && <p className="field-error">{formErrors.resume}</p>}
+                </div>
+
+                {/* 2. Evidence Source */}
+                <div className="form-group">
+                  <label className="form-label">
+                    2. Code Evidence Source <span className="req">*</span>
+                  </label>
+                  <div className="mode-toggle">
+                    <button
+                      type="button"
+                      className={`mode-btn ${evidenceMode === 'github' ? 'on' : ''}`}
+                      onClick={() => setEvidenceMode('github')}
+                    >
+                      GitHub Profile URL
+                    </button>
+                    <button
+                      type="button"
+                      className={`mode-btn ${evidenceMode === 'zip' ? 'on' : ''}`}
+                      onClick={() => setEvidenceMode('zip')}
+                    >
+                      Project ZIP Upload
+                    </button>
+                  </div>
+
+                  {evidenceMode === 'github' ? (
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="https://github.com/username or github handle"
+                      value={githubUrl}
+                      onChange={(e) => setGithubUrl(e.target.value)}
+                    />
+                  ) : (
+                    <div className="file-input-wrapper">
+                      <input
+                        type="file"
+                        accept=".zip"
+                        onChange={(e) => setZipFile(e.target.files[0])}
+                      />
+                      {zipFile && <span className="m file-hint">Selected: {zipFile.name}</span>}
+                    </div>
+                  )}
+                  {formErrors.evidence && <p className="field-error">{formErrors.evidence}</p>}
+                </div>
+
+                {/* 3. Optional Certificates */}
+                <div className="form-group">
+                  <label className="form-label">3. Certificates (Optional)</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Credential links or issuing organization titles"
+                    value={certInput}
+                    onChange={(e) => setCertInput(e.target.value)}
+                  />
+                </div>
+
+                {/* 4. Target Role */}
+                <div className="form-group">
+                  <label className="form-label">
+                    4. Target Role or Job Description <span className="req">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Senior Full Stack TypeScript Engineer"
+                    value={targetRole}
+                    onChange={(e) => setTargetRole(e.target.value)}
+                  />
+                  {formErrors.targetRole && <p className="field-error">{formErrors.targetRole}</p>}
+                </div>
+
+                {/* 5. Consents */}
+                <div className="form-group consent-group">
+                  <label className="consent-label">
+                    <input
+                      type="checkbox"
+                      checked={consentAi}
+                      onChange={(e) => setConsentAi(e.target.checked)}
+                    />
+                    <span>
+                      I consent to language model analysis of resume text and extracted code snippets for evidence proposal.
+                    </span>
+                  </label>
+                  {formErrors.consentAi && <p className="field-error">{formErrors.consentAi}</p>}
+
+                  <label className="consent-label">
+                    <input
+                      type="checkbox"
+                      checked={consentRepo}
+                      onChange={(e) => setConsentRepo(e.target.checked)}
+                    />
+                    <span>
+                      I grant read-only access to inspect repository file trees, commit metadata, and blame history.
+                    </span>
+                  </label>
+                  {formErrors.consentRepo && <p className="field-error">{formErrors.consentRepo}</p>}
+                </div>
+
+                <button type="button" className="b mg" onClick={handleStartVerification}>
+                  Start verification pipeline <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                </button>
+              </div>
+            )}
+
+            {/* STEP 1: READ */}
+            {currentStep === 1 && readData && (
+              <div className="step-pane">
+                <p className="step-desc">
+                  Parsing resume sections, identifying claimed skills, and cataloguing repository source files.
+                </p>
+
+                <div className="io-grid">
+                  <div className="io-box">
+                    <span className="io-tag m">INPUTS</span>
+                    <p><strong>Resume:</strong> {intakeData?.resumeFile?.name || 'Pasted text input'}</p>
+                    <p><strong>Evidence:</strong> {intakeData?.githubUrl || intakeData?.zipFile?.name}</p>
+                    <p><strong>Target Role:</strong> {intakeData?.targetRole}</p>
+                  </div>
+                  <div className="io-box">
+                    <span className="io-tag m">OUTPUTS (COUNTS)</span>
+                    <p><strong>Resume Sections Parsed:</strong> {readData.sectionCount}</p>
+                    <p><strong>Claimed Skills Identified:</strong> {readData.skillsCount}</p>
+                    <p><strong>Repositories Indexed:</strong> {readData.repoCount}</p>
+                    <p><strong>Code Files Inspected:</strong> {readData.fileCount}</p>
+                    <p><strong>Total Lines of Code:</strong> {readData.totalLinesRead.toLocaleString()}</p>
+                  </div>
+                </div>
+
+                <div className="data-table-wrapper">
+                  <span className="table-title m">EXTRACTED SKILL CLAIMS</span>
+                  <div className="chips-row">
+                    {readData.claimedSkills.map((sk) => (
+                      <span key={sk} className="chip C">{sk}</span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="step-actions">
+                  <button
+                    type="button"
+                    className="b mg"
+                    onClick={() => {
+                      setCurrentStep(2)
+                      if (!proposeData) runStep2()
+                    }}
+                  >
+                    Proceed to Step 2 (Propose) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 2: PROPOSE */}
+            {currentStep === 2 && (
+              <div className="step-pane">
+                <p className="step-desc">
+                  Language model proposes skill claims and suggests pointers to specific file paths, line ranges, and commit hashes.
+                </p>
+
+                <div className="warning-banner m">
+                  SUGGESTIONS ONLY: Language model proposals are strictly advisory and never constitute final decisions. Every pointer is checked by deterministic code in Step 3.
+                </div>
+
+                {proposeData?.isSampleModelOutput && (
+                  <div className="sample-badge m">
+                    [Sample model output: no LLM API key configured in environment]
+                  </div>
+                )}
+
+                <div className="io-grid">
+                  <div className="io-box">
+                    <span className="io-tag m">INPUTS</span>
+                    <p><strong>Skills:</strong> {readData?.claimedSkills?.join(', ')}</p>
+                    <p><strong>File Index:</strong> {readData?.fileCount} files available</p>
+                  </div>
+                  <div className="io-box">
+                    <span className="io-tag m">OUTPUTS</span>
+                    <p><strong>Proposals Generated:</strong> {proposeData?.pointersFound || 0} pointers</p>
+                    <p><strong>Model Status:</strong> Advisory proposals ready for check</p>
+                  </div>
+                </div>
+
+                <div className="table-card">
+                  <table className="verify-table">
+                    <thead>
+                      <tr>
+                        <th>Skill</th>
+                        <th>Proposed File Pointer</th>
+                        <th>Line Range</th>
+                        <th>Commit</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proposeData?.proposals.map((p) => (
+                        <tr key={p.skill}>
+                          <td><strong>{p.skill}</strong></td>
+                          <td className="m">{p.filePath || 'No matching file'}</td>
+                          <td className="m">{p.lineRange}</td>
+                          <td className="m">{p.commitHash}</td>
+                          <td><span className="m tag-advisory">{p.status}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="step-actions">
+                  <button
+                    type="button"
+                    className="b mg"
+                    onClick={() => {
+                      setCurrentStep(3)
+                      if (!evidenceData) runStep3()
+                    }}
+                  >
+                    Proceed to Step 3 (Check Evidence) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: CHECK EVIDENCE */}
+            {currentStep === 3 && (
+              <div className="step-pane">
+                <p className="step-desc">
+                  Deterministic code confirms each proposed pointer exists and computes cryptographic file hashes to verify integrity.
+                </p>
+
+                <div className="io-grid">
+                  <div className="io-box">
+                    <span className="io-tag m">INPUTS</span>
+                    <p><strong>Pointers Evaluated:</strong> {evidenceData?.totalChecked || 0}</p>
+                  </div>
+                  <div className="io-box">
+                    <span className="io-tag m">OUTPUTS</span>
+                    <p><strong>Confirmed Pointers:</strong> {evidenceData?.confirmedCount || 0}</p>
+                    <p><strong>Dropped / Flagged:</strong> {evidenceData?.flaggedCount || 0}</p>
+                  </div>
+                </div>
+
+                <div className="table-card">
+                  <span className="table-title m">CONFIRMED EVIDENCE POINTERS</span>
+                  <table className="verify-table">
+                    <thead>
+                      <tr>
+                        <th>Skill</th>
+                        <th>Verified File Path</th>
+                        <th>SHA-256 Digest</th>
+                        <th>Integrity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {evidenceData?.confirmedPointers.map((p) => (
+                        <tr key={p.skill}>
+                          <td><strong>{p.skill}</strong></td>
+                          <td className="m">{p.filePath}</td>
+                          <td className="m">sha256:{p.fileHash}</td>
+                          <td><span className="m tag-confirmed">Confirmed</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {evidenceData?.flaggedPointers.length > 0 && (
+                  <div className="table-card" style={{ marginTop: 18 }}>
+                    <span className="table-title m">DROPPED OR FLAGGED POINTERS</span>
+                    <table className="verify-table">
+                      <thead>
+                        <tr>
+                          <th>Skill</th>
+                          <th>Proposed Path</th>
+                          <th>Reason For Drop</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {evidenceData.flaggedPointers.map((p) => (
+                          <tr key={p.skill}>
+                            <td><strong>{p.skill}</strong></td>
+                            <td className="m">{p.filePath || 'None'}</td>
+                            <td>{p.flagReason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="step-actions">
+                  <button
+                    type="button"
+                    className="b mg"
+                    onClick={() => {
+                      setCurrentStep(4)
+                      if (!authorshipData) runStep4()
+                    }}
+                  >
+                    Proceed to Step 4 (Authorship and Depth) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 4: AUTHORSHIP AND DEPTH */}
+            {currentStep === 4 && (
+              <div className="step-pane">
+                <p className="step-desc">
+                  Analyzing commit history, git blame author lines, and usage depth to confirm original authorship versus tutorial forks.
+                </p>
+
+                <div className="io-grid">
+                  <div className="io-box">
+                    <span className="io-tag m">INPUTS</span>
+                    <p><strong>Confirmed Files:</strong> {evidenceData?.confirmedCount} files</p>
+                  </div>
+                  <div className="io-box">
+                    <span className="io-tag m">OUTPUTS</span>
+                    <p><strong>Candidate Average Line Share:</strong> {authorshipData?.avgLineShare}%</p>
+                    <p><strong>Forked Tutorial Conflicts:</strong> {authorshipData?.authorshipData.filter((a) => a.forkedTutorial).length}</p>
+                  </div>
+                </div>
+
+                <div className="table-card">
+                  <table className="verify-table">
+                    <thead>
+                      <tr>
+                        <th>Skill</th>
+                        <th>Author Line Share</th>
+                        <th>Original Commits</th>
+                        <th>Usage Depth Assessment</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {authorshipData?.authorshipData.map((a) => (
+                        <tr key={a.skill}>
+                          <td><strong>{a.skill}</strong></td>
+                          <td>{a.lineShare > 0 ? `${a.lineShare}%` : '0%'}</td>
+                          <td>{a.commitCount}</td>
+                          <td>{a.usageDepth}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="step-actions">
+                  <button
+                    type="button"
+                    className="b mg"
+                    onClick={() => {
+                      setCurrentStep(5)
+                      if (!statesData) runStep5()
+                    }}
+                  >
+                    Proceed to Step 5 (Assign States) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 5: ASSIGN STATES */}
+            {currentStep === 5 && (
+              <div className="step-pane">
+                <p className="step-desc">
+                  Evidence sets the highest state a skill can reach. Verified, Supported, Claimed (not penalised), or Contradicted.
+                </p>
+
+                <div className="io-grid">
+                  <div className="io-box">
+                    <span className="io-tag m">STATE RULES</span>
+                    <p><strong>Verified:</strong> Code exists and authorship confirmed.</p>
+                    <p><strong>Supported:</strong> Code exists, partial depth. One micro-check away.</p>
+                    <p><strong>Claimed:</strong> Resume claim with no code found. Not penalised.</p>
+                    <p><strong>Contradicted:</strong> Forked tutorial with 0 commits.</p>
+                  </div>
+                  <div className="io-box">
+                    <span className="io-tag m">CURRENT STATE DISTRIBUTION</span>
+                    <p><strong>Verified:</strong> {statesData?.counts.V}</p>
+                    <p><strong>Supported:</strong> {statesData?.counts.S}</p>
+                    <p><strong>Claimed:</strong> {statesData?.counts.C}</p>
+                    <p><strong>Contradicted:</strong> {statesData?.counts.X}</p>
+                  </div>
+                </div>
+
+                <div className="table-card">
+                  <table className="verify-table">
+                    <thead>
+                      <tr>
+                        <th>Skill</th>
+                        <th>Assigned State</th>
+                        <th>Evidence and Rationale</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statesData?.skillStates.map((s) => (
+                        <tr key={s.skill}>
+                          <td><strong>{s.skill}</strong></td>
+                          <td><span className={`chip ${s.state}`}>{s.state === 'V' ? 'VERIFIED' : s.state === 'S' ? 'SUPPORTED' : s.state === 'C' ? 'CLAIMED' : 'CONTRADICTED'}</span></td>
+                          <td>{s.rationale}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="step-actions">
+                  <button
+                    type="button"
+                    className="b mg"
+                    onClick={() => {
+                      setCurrentStep(6)
+                    }}
+                  >
+                    Proceed to Step 6 (Micro-checks) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 6: MICRO-CHECKS */}
+            {currentStep === 6 && (
+              <div className="step-pane">
+                <p className="step-desc">
+                  Micro-checks evaluate architectural trade-offs using the candidate's own code. Passing upgrades Supported skills to Verified. Failed checks never lower a skill below Supported.
+                </p>
+
+                {microChecks.length === 0 ? (
+                  <div className="info-box">
+                    <p>No Supported skills remain. All claims are either Verified, Claimed, or Contradicted.</p>
+                  </div>
+                ) : (
+                  <div className="micro-checks-list">
+                    {microChecks.map((m) => (
+                      <div key={m.skill} className="micro-check-card">
+                        <div className="mc-header">
+                          <span className="chip S">SUPPORTED SKILL: {m.skill}</span>
+                          <span className="m file-ref">{m.filePath}</span>
+                        </div>
+                        <p className="mc-q"><strong>Question:</strong> {m.question}</p>
+
+                        {!m.answered ? (
+                          <div className="mc-form">
+                            <textarea
+                              rows={3}
+                              className="form-textarea"
+                              placeholder="Answer in a few sentences explaining your code rationale..."
+                              defaultValue=""
+                              id={`mc-${m.skill}`}
+                            />
+                            <button
+                              type="button"
+                              className="b sm"
+                              onClick={() => {
+                                const input = document.getElementById(`mc-${m.skill}`)
+                                handleAnswerMicroCheck(m.skill, input ? input.value : '')
+                              }}
+                            >
+                              Submit micro-check
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mc-result">
+                            <p><strong>Your Answer:</strong> {m.userAnswer}</p>
+                            <div className={m.passed ? 'mc-pass m' : 'mc-fail m'}>{m.feedback}</div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="step-actions">
+                  <button type="button" className="b mg" onClick={completeStep6}>
+                    Complete micro-checks and calculate role match <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 7: ROLE MATCH AND GAPS */}
+            {currentStep === 7 && roleMatchData && (
+              <div className="step-pane">
+                <p className="step-desc">
+                  Evidence-weighted role match to "{intakeData?.targetRole}". Weights: Verified 100%, Supported 60%, Claimed 20%, Contradicted 0%.
+                </p>
+
+                <div className="match-score-card">
+                  <span className="k m">EVIDENCE-WEIGHTED MATCH</span>
+                  <div className="match-big m">{roleMatchData.matchPercentage}%</div>
+                  <div className="match-bar">
+                    <div className="bar-v" style={{ width: `${(statesData.counts.V / statesData.totalSkills) * 100}%` }} />
+                    <div className="bar-s" style={{ width: `${(statesData.counts.S / statesData.totalSkills) * 100}%` }} />
+                    <div className="bar-c" style={{ width: `${(statesData.counts.C / statesData.totalSkills) * 100}%` }} />
+                  </div>
+                  <p className="m match-note">{roleMatchData.disclaimer}</p>
+                </div>
+
+                <div className="table-card" style={{ marginTop: 20 }}>
+                  <span className="table-title m">RANKED EVIDENCE GAPS (SORTED BY MATCH IMPACT)</span>
+                  <table className="verify-table">
+                    <thead>
+                      <tr>
+                        <th>Skill Gap</th>
+                        <th>Current State</th>
+                        <th>Role Importance</th>
+                        <th>Recommended Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roleMatchData.rankedGaps.map((g) => (
+                        <tr key={g.skill}>
+                          <td><strong>{g.skill}</strong></td>
+                          <td><span className={`chip ${g.currentState}`}>{g.currentState}</span></td>
+                          <td>Weight {g.importance}</td>
+                          <td>{g.recommendation}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="step-actions">
+                  <button
+                    type="button"
+                    className="b mg"
+                    onClick={() => {
+                      setCurrentStep(8)
+                      if (!passportData) runStep8()
+                    }}
+                  >
+                    Proceed to Step 8 (Issue Passport) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 8: ISSUE PASSPORT & RESULT VIEW */}
+            {currentStep === 8 && passportData && (
+              <div className="step-pane result-view">
+                <div className="result-hero-3d">
+                  <div className="result-3d-stage">
+                    <ErrorBoundary fallback={null}>
+                      <Passport3D progress={progressDummy} active={true} reduced={RM} />
+                    </ErrorBoundary>
+                  </div>
+                  <div className="result-hero-text">
+                    <span className="k m">CRYPTOGRAPHIC SKILL PASSPORT</span>
+                    <h2>Passport Issued and Sealed</h2>
+                    <p className="m">ID: {passportData.passport.id} • Issued: {new Date(passportData.passport.issuedAt).toLocaleDateString()}</p>
+                    <p>Target Role: {passportData.passport.targetRole}</p>
+                    <div className="passport-hash-box">
+                      <span className="m hash-label">SHA-256 PASSPORT DIGEST:</span>
+                      <code className="m">{passportData.hash}</code>
+                    </div>
+
+                    <div className="hash-actions">
+                      <button type="button" className="b sm" onClick={handleVerifyHash}>
+                        Verify hash
+                      </button>
+                      <button type="button" className="b g sm" onClick={handleSimulateTamper}>
+                        Simulate an edit
+                      </button>
+                    </div>
+
+                    {hashCheckResult && (
+                      <div className={`hash-feedback m ${hashCheckResult.valid ? 'ok' : 'err'}`} role="status">
+                        {hashCheckResult.message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* RESULT PERSPECTIVE TABS */}
+                <div className="result-tabs-nav">
+                  {['Candidate', 'Recruiter', 'Placement'].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`res-tab-btn ${activeResultTab === t ? 'active' : ''}`}
+                      onClick={() => setActiveResultTab(t)}
+                    >
+                      {t} View
+                    </button>
+                  ))}
+                </div>
+
+                <div className="result-tab-content">
+                  {activeResultTab === 'Candidate' && (
+                    <div className="tab-pane">
+                      <h3>Candidate Verification Summary</h3>
+                      <p>Inspect the file and commit evidence behind each of your claimed skills.</p>
+                      <table className="verify-table" style={{ marginTop: 14 }}>
+                        <thead>
+                          <tr>
+                            <th>Skill</th>
+                            <th>Status</th>
+                            <th>File Proof & Commit Line Share</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {passportData.passport.skills.map((s) => (
+                            <tr key={s.skill}>
+                              <td><strong>{s.skill}</strong></td>
+                              <td><span className={`chip ${s.state}`}>{s.state === 'V' ? 'VERIFIED' : s.state === 'S' ? 'SUPPORTED' : s.state === 'C' ? 'CLAIMED' : 'CONTRADICTED'}</span></td>
+                              <td>{s.evidence}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {activeResultTab === 'Recruiter' && (
+                    <div className="tab-pane">
+                      <h3>Recruiter Evidence Report</h3>
+                      <p>Evidence-grounded audit trail. No single hire score. Every claim links to code.</p>
+                      <ul className="recruiter-list">
+                        <li><strong>Verified Skills:</strong> Confirmed original commits with author line share &gt; 75%.</li>
+                        <li><strong>Red Flags:</strong> Any forked tutorial repositories with zero original commits are labeled Contradicted.</li>
+                        <li><strong>Interview Questions:</strong> Use code-grounded questions from micro-checks for live technical interviews.</li>
+                      </ul>
+                    </div>
+                  )}
+
+                  {activeResultTab === 'Placement' && (
+                    <div className="tab-pane">
+                      <h3>Placement Cell Overview</h3>
+                      <p>Batch skill readiness metrics. Identify where candidate claims outrun code evidence.</p>
+                      <div className="placement-metrics-grid">
+                        <div className="metric-box">
+                          <span className="m">VERIFIED RATIO</span>
+                          <div className="m-val">{statesData?.counts.V} / {statesData?.totalSkills}</div>
+                        </div>
+                        <div className="metric-box">
+                          <span className="m">GAPS IDENTIFIED</span>
+                          <div className="m-val">{roleMatchData?.rankedGaps.length}</div>
+                        </div>
+                        <div className="metric-box">
+                          <span className="m">TAMPER PROTECTION</span>
+                          <div className="m-val">SHA-256</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="result-actions-footer">
+                  <Link to="/" className="b g sm">Return to home</Link>
+                  <button type="button" className="b sm" onClick={() => window.print()}>Print passport record</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SOFT BLACK LIVE-LOG PANEL UNDER CURRENT STEP CARD */}
+          <section className="verify-live-log-panel" aria-label="Live verification log console">
+            <div className="log-panel-header">
+              <span className="m log-title">LIVE VERIFICATION LOG</span>
+              <span className="m log-status">ENGINE: DETERMINISTIC + ADVISORY MODEL</span>
+            </div>
+            <div className="log-console-body m" ref={logTerminalRef}>
+              {logs.map((line, idx) => (
+                <div key={idx} className="log-line">{line}</div>
+              ))}
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  )
+}
