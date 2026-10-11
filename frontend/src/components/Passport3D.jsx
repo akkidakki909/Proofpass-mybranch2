@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 
-const NODE_COLORS = ['#FFF8F0', '#92140C', '#1E1E24', '#FFF8F0', '#B81D13', '#92140C', '#FFFFFF']
+const NODE_COLORS = ['#118B96', '#44C9BC', '#EBF0F1', '#44C9BC', '#118B96', '#FFFFFF']
 const ROWS = [
   ['V', 'TypeScript / Node.js', 0.86],
   ['S', 'Rust & Systems', 0.64],
@@ -11,7 +11,7 @@ const ROWS = [
   ['C', 'Kubernetes / DevOps', 0.32],
   ['X', 'Legacy COBOL', 0.42],
 ]
-const ROW_COLOR = { V: '#92140C', S: '#FFF8F0', C: '#A8A6A1', X: '#16161B' }
+const ROW_COLOR = { V: '#44C9BC', S: '#EBF0F1', C: '#9FC3C7', X: '#0A373C' }
 const CHIP_TEXT = { V: 'VERIFIED', S: 'SUPPORTED', C: 'CLAIMED', X: 'CONTRADICTED' }
 
 function createPassportTexture(front) {
@@ -20,35 +20,35 @@ function createPassportTexture(front) {
   c.height = 1366
   const x = c.getContext('2d')
 
-  // Background in Raisin Black #1E1E24
-  x.fillStyle = '#1E1E24'
+  // Background in Deep Teal #118B96
+  x.fillStyle = '#118B96'
   x.fillRect(0, 0, 1024, 1366)
 
-  // Border inlay in Crimson Red #92140C
-  x.strokeStyle = '#92140C'
+  // Border inlay in Aquamarine #44C9BC
+  x.strokeStyle = '#44C9BC'
   x.lineWidth = 6
   x.strokeRect(32, 32, 960, 1302)
 
-  x.strokeStyle = 'rgba(255, 248, 240, 0.3)'
+  x.strokeStyle = 'rgba(235, 240, 241, 0.35)'
   x.lineWidth = 2
   x.strokeRect(46, 46, 932, 1274)
 
   if (front) {
-    // Header in Floral White #FFF8F0
-    x.fillStyle = '#FFF8F0'
+    // Header in Ice White #EBF0F1
+    x.fillStyle = '#EBF0F1'
     x.font = '800 96px "Bricolage Grotesque", sans-serif'
     x.fillText('ProofPass', 72, 160)
 
     x.font = '700 24px monospace'
-    x.fillStyle = '#92140C'
+    x.fillStyle = '#44C9BC'
     x.fillText('SKILL PASSPORT / OFFICIAL SPECIMEN', 74, 210)
 
-    x.fillStyle = 'rgba(255, 248, 240, 0.75)'
+    x.fillStyle = 'rgba(235, 240, 241, 0.8)'
     x.font = '500 20px monospace'
     x.fillText('PASSPORT NO: PP-2026-0001 / CRYPTOGRAPHIC ID', 74, 245)
 
     // Divider
-    x.strokeStyle = 'rgba(255, 248, 240, 0.2)'
+    x.strokeStyle = 'rgba(68, 201, 188, 0.35)'
     x.lineWidth = 2
     x.beginPath()
     x.moveTo(74, 275)
@@ -64,59 +64,59 @@ function createPassportTexture(front) {
       x.fillRect(74, y - 24, 24, 24)
 
       // Skill label
-      x.fillStyle = '#FFF8F0'
+      x.fillStyle = '#EBF0F1'
       x.font = '700 28px "Bricolage Grotesque", sans-serif'
       x.fillText(label, 116, y - 4)
 
       // Status tag
-      x.fillStyle = s === 'V' ? '#92140C' : (s === 'S' ? '#FFF8F0' : 'rgba(255, 248, 240, 0.7)')
+      x.fillStyle = s === 'V' ? '#44C9BC' : (s === 'S' ? '#EBF0F1' : 'rgba(235, 240, 241, 0.7)')
       x.font = '700 18px monospace'
       x.fillText(CHIP_TEXT[s], 750, y - 4)
 
       // Progress bar background
-      x.fillStyle = 'rgba(255, 248, 240, 0.12)'
+      x.fillStyle = 'rgba(235, 240, 241, 0.15)'
       x.fillRect(116, y + 10, 780, 16)
 
       // Progress bar fill
-      x.fillStyle = s === 'V' ? '#92140C' : (s === 'S' ? '#FFF8F0' : 'rgba(255, 248, 240, 0.65)')
+      x.fillStyle = s === 'V' ? '#44C9BC' : (s === 'S' ? '#EBF0F1' : 'rgba(235, 240, 241, 0.65)')
       x.fillRect(116, y + 10, 780 * w, 16)
     })
 
-    // Official Verification Stamp in Crimson Red & Floral White
+    // Official Verification Stamp in Aquamarine & Ice White
     x.save()
     x.translate(760, 1100)
     x.rotate(-0.24)
 
-    x.strokeStyle = '#92140C'
+    x.strokeStyle = '#44C9BC'
     x.lineWidth = 9
     x.beginPath()
     x.arc(0, 0, 130, 0, Math.PI * 2)
     x.stroke()
 
-    x.strokeStyle = 'rgba(255, 248, 240, 0.4)'
+    x.strokeStyle = 'rgba(235, 240, 241, 0.45)'
     x.lineWidth = 3
     x.beginPath()
     x.arc(0, 0, 115, 0, Math.PI * 2)
     x.stroke()
 
-    x.fillStyle = '#FFF8F0'
+    x.fillStyle = '#EBF0F1'
     x.font = '900 42px monospace'
     x.textAlign = 'center'
     x.fillText('VERIFIED', 0, 12)
 
     x.font = '700 18px monospace'
-    x.fillStyle = '#92140C'
+    x.fillStyle = '#44C9BC'
     x.fillText('SHA-256 PROVEN', 0, -50)
     x.fillText('PROOFPASS AUTH', 0, 60)
     x.restore()
 
     // Footer note
-    x.fillStyle = 'rgba(255, 248, 240, 0.8)'
+    x.fillStyle = 'rgba(235, 240, 241, 0.85)'
     x.font = '600 20px monospace'
     x.fillText('AUTHENTICATED VIA COMMIT EVIDENCE & CERTS', 74, 1280)
   } else {
     // Back side: security watermark & PP Emblem
-    x.strokeStyle = 'rgba(255, 248, 240, 0.25)'
+    x.strokeStyle = 'rgba(68, 201, 188, 0.25)'
     x.lineWidth = 4
     for (let i = 1; i <= 9; i++) {
       x.beginPath()
@@ -124,7 +124,7 @@ function createPassportTexture(front) {
       x.stroke()
     }
 
-    x.strokeStyle = 'rgba(255, 248, 240, 0.15)'
+    x.strokeStyle = 'rgba(235, 240, 241, 0.15)'
     x.lineWidth = 2
     for (let i = 0; i < 16; i++) {
       const angle = (i / 16) * Math.PI * 2
@@ -135,24 +135,24 @@ function createPassportTexture(front) {
     }
 
     // Central emblem shield
-    x.fillStyle = '#16161B'
+    x.fillStyle = '#0D4E54'
     x.beginPath()
     x.arc(512, 683, 160, 0, Math.PI * 2)
     x.fill()
-    x.strokeStyle = '#92140C'
+    x.strokeStyle = '#44C9BC'
     x.lineWidth = 8
     x.stroke()
 
-    x.fillStyle = '#FFF8F0'
+    x.fillStyle = '#EBF0F1'
     x.font = '900 120px "Bricolage Grotesque", sans-serif'
     x.textAlign = 'center'
     x.fillText('PP', 512, 725)
 
-    x.fillStyle = '#92140C'
+    x.fillStyle = '#44C9BC'
     x.font = '700 26px monospace'
     x.fillText('PROOFPASS SECURITY SEAL', 512, 920)
 
-    x.fillStyle = 'rgba(255, 248, 240, 0.8)'
+    x.fillStyle = 'rgba(235, 240, 241, 0.85)'
     x.font = '500 22px monospace'
     x.fillText('CRYPTOGRAPHICALLY SECURED AGAINST FORGERY', 512, 960)
   }
