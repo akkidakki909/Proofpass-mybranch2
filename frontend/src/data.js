@@ -48,3 +48,22 @@ export const VIEWS = {
   Recruiter: ['Read verified skills, red flags and interview questions', 'Everything on one screen, with the evidence behind every label.', ['No single hire score, by design', 'Names hidden when candidates are compared', 'A tamper check on every passport']],
   'Placement cell': ['See where claims outrun evidence', 'A skill by state view of what a whole batch can prove.', ['Counts per skill and per state', 'Spot gaps before recruiters do', 'Plan workshops around real evidence gaps']],
 }
+
+export const PIPELINE = [
+  { h: 'Read', p: 'The resume, a GitHub profile or project ZIP, and any certificates come in together with a target role.', by: 'You' },
+  { h: 'Propose', p: 'A language model suggests skills and points at the files that might show them. These are suggestions only.', by: 'Model' },
+  { h: 'Check files', p: 'Plain code confirms that each file exists and has not changed since it was committed.', by: 'Code' },
+  { h: 'Check authorship', p: 'Commit history shows who wrote the code and how deeply the skill is used.', by: 'Code' },
+  { h: 'Assign states', p: 'The evidence source sets the highest state a skill can reach. A resume alone never gets past Claimed.', by: 'Code' },
+  { h: 'Micro-check', p: 'Supported skills get one short question written from the candidate\'s own code.', by: 'You' },
+  { h: 'Match to the role', p: 'Skills are weighted by state and ranked against the role, with a gap list that shows what to prove next.', by: 'Code' },
+  { h: 'Issue the passport', p: 'The result is sealed with a SHA-256 hash, so anyone can re-verify that it was not edited.', by: 'Code' },
+]
+
+export const WEIGHTS = { V: 100, S: 60, C: 20, X: 0 }
+
+export const SOURCES = {
+  resume: { label: 'Resume only', ceiling: 20, note: 'Nothing to check against. The skill stays Claimed and is not penalised.' },
+  code: { label: 'Code on GitHub', ceiling: 80, note: 'Files exist and the commit history shows the candidate wrote them.' },
+  fork: { label: 'Forked tutorial', ceiling: 0, note: 'The repository is a fork with no original commits, so the evidence conflicts with the claim.' },
+}

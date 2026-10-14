@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 
-const NODE_COLORS = ['#118B96', '#44C9BC', '#EBF0F1', '#44C9BC', '#118B96', '#FFFFFF']
+const NODE_COLORS = ['#1D1A17', '#E0742F', '#F3ECDF', '#E0742F', '#1D1A17', '#FFFFFF']
 const ROWS = [
   ['V', 'TypeScript / Node.js', 0.86],
   ['S', 'Rust & Systems', 0.64],
@@ -11,7 +11,7 @@ const ROWS = [
   ['C', 'Kubernetes / DevOps', 0.32],
   ['X', 'Legacy COBOL', 0.42],
 ]
-const ROW_COLOR = { V: '#44C9BC', S: '#EBF0F1', C: '#9FC3C7', X: '#0A373C' }
+const ROW_COLOR = { V: '#E0742F', S: '#F3ECDF', C: '#8A8173', X: '#D9483B' }
 const CHIP_TEXT = { V: 'VERIFIED', S: 'SUPPORTED', C: 'CLAIMED', X: 'CONTRADICTED' }
 
 function createPassportTexture(front) {
@@ -20,35 +20,35 @@ function createPassportTexture(front) {
   c.height = 1366
   const x = c.getContext('2d')
 
-  // Background in Deep Teal #118B96
-  x.fillStyle = '#118B96'
+  // Background in Soft Black #1D1A17
+  x.fillStyle = '#1D1A17'
   x.fillRect(0, 0, 1024, 1366)
 
-  // Border inlay in Aquamarine #44C9BC
-  x.strokeStyle = '#44C9BC'
+  // Border inlay in Burnt Orange #E0742F
+  x.strokeStyle = '#E0742F'
   x.lineWidth = 6
   x.strokeRect(32, 32, 960, 1302)
 
-  x.strokeStyle = 'rgba(235, 240, 241, 0.35)'
+  x.strokeStyle = 'rgba(243, 236, 223, 0.35)'
   x.lineWidth = 2
   x.strokeRect(46, 46, 932, 1274)
 
   if (front) {
-    // Header in Ice White #EBF0F1
-    x.fillStyle = '#EBF0F1'
+    // Header in Ivory #F3ECDF
+    x.fillStyle = '#F3ECDF'
     x.font = '800 96px "Bricolage Grotesque", sans-serif'
     x.fillText('ProofPass', 72, 160)
 
     x.font = '700 24px monospace'
-    x.fillStyle = '#44C9BC'
+    x.fillStyle = '#E0742F'
     x.fillText('SKILL PASSPORT / OFFICIAL SPECIMEN', 74, 210)
 
-    x.fillStyle = 'rgba(235, 240, 241, 0.8)'
+    x.fillStyle = 'rgba(243, 236, 223, 0.8)'
     x.font = '500 20px monospace'
     x.fillText('PASSPORT NO: PP-2026-0001 / CRYPTOGRAPHIC ID', 74, 245)
 
     // Divider
-    x.strokeStyle = 'rgba(68, 201, 188, 0.35)'
+    x.strokeStyle = 'rgba(224, 116, 47, 0.35)'
     x.lineWidth = 2
     x.beginPath()
     x.moveTo(74, 275)
@@ -64,59 +64,59 @@ function createPassportTexture(front) {
       x.fillRect(74, y - 24, 24, 24)
 
       // Skill label
-      x.fillStyle = '#EBF0F1'
+      x.fillStyle = '#F3ECDF'
       x.font = '700 28px "Bricolage Grotesque", sans-serif'
       x.fillText(label, 116, y - 4)
 
       // Status tag
-      x.fillStyle = s === 'V' ? '#44C9BC' : (s === 'S' ? '#EBF0F1' : 'rgba(235, 240, 241, 0.7)')
+      x.fillStyle = s === 'V' ? '#E0742F' : (s === 'S' ? '#F3ECDF' : 'rgba(243, 236, 223, 0.7)')
       x.font = '700 18px monospace'
       x.fillText(CHIP_TEXT[s], 750, y - 4)
 
       // Progress bar background
-      x.fillStyle = 'rgba(235, 240, 241, 0.15)'
+      x.fillStyle = 'rgba(243, 236, 223, 0.15)'
       x.fillRect(116, y + 10, 780, 16)
 
       // Progress bar fill
-      x.fillStyle = s === 'V' ? '#44C9BC' : (s === 'S' ? '#EBF0F1' : 'rgba(235, 240, 241, 0.65)')
+      x.fillStyle = s === 'V' ? '#E0742F' : (s === 'S' ? '#F3ECDF' : 'rgba(243, 236, 223, 0.65)')
       x.fillRect(116, y + 10, 780 * w, 16)
     })
 
-    // Official Verification Stamp in Aquamarine & Ice White
+    // Official Verification Stamp in Burnt Orange & Ivory
     x.save()
     x.translate(760, 1100)
     x.rotate(-0.24)
 
-    x.strokeStyle = '#44C9BC'
+    x.strokeStyle = '#E0742F'
     x.lineWidth = 9
     x.beginPath()
     x.arc(0, 0, 130, 0, Math.PI * 2)
     x.stroke()
 
-    x.strokeStyle = 'rgba(235, 240, 241, 0.45)'
+    x.strokeStyle = 'rgba(243, 236, 223, 0.45)'
     x.lineWidth = 3
     x.beginPath()
     x.arc(0, 0, 115, 0, Math.PI * 2)
     x.stroke()
 
-    x.fillStyle = '#EBF0F1'
+    x.fillStyle = '#F3ECDF'
     x.font = '900 42px monospace'
     x.textAlign = 'center'
     x.fillText('VERIFIED', 0, 12)
 
     x.font = '700 18px monospace'
-    x.fillStyle = '#44C9BC'
+    x.fillStyle = '#E0742F'
     x.fillText('SHA-256 PROVEN', 0, -50)
     x.fillText('PROOFPASS AUTH', 0, 60)
     x.restore()
 
     // Footer note
-    x.fillStyle = 'rgba(235, 240, 241, 0.85)'
+    x.fillStyle = 'rgba(243, 236, 223, 0.85)'
     x.font = '600 20px monospace'
     x.fillText('AUTHENTICATED VIA COMMIT EVIDENCE & CERTS', 74, 1280)
   } else {
     // Back side: security watermark & PP Emblem
-    x.strokeStyle = 'rgba(68, 201, 188, 0.25)'
+    x.strokeStyle = 'rgba(224, 116, 47, 0.25)'
     x.lineWidth = 4
     for (let i = 1; i <= 9; i++) {
       x.beginPath()
@@ -124,7 +124,7 @@ function createPassportTexture(front) {
       x.stroke()
     }
 
-    x.strokeStyle = 'rgba(235, 240, 241, 0.15)'
+    x.strokeStyle = 'rgba(243, 236, 223, 0.15)'
     x.lineWidth = 2
     for (let i = 0; i < 16; i++) {
       const angle = (i / 16) * Math.PI * 2
@@ -135,24 +135,24 @@ function createPassportTexture(front) {
     }
 
     // Central emblem shield
-    x.fillStyle = '#0D4E54'
+    x.fillStyle = '#2A2521'
     x.beginPath()
     x.arc(512, 683, 160, 0, Math.PI * 2)
     x.fill()
-    x.strokeStyle = '#44C9BC'
+    x.strokeStyle = '#E0742F'
     x.lineWidth = 8
     x.stroke()
 
-    x.fillStyle = '#EBF0F1'
+    x.fillStyle = '#F3ECDF'
     x.font = '900 120px "Bricolage Grotesque", sans-serif'
     x.textAlign = 'center'
     x.fillText('PP', 512, 725)
 
-    x.fillStyle = '#44C9BC'
+    x.fillStyle = '#E0742F'
     x.font = '700 26px monospace'
     x.fillText('PROOFPASS SECURITY SEAL', 512, 920)
 
-    x.fillStyle = 'rgba(235, 240, 241, 0.85)'
+    x.fillStyle = 'rgba(243, 236, 223, 0.85)'
     x.font = '500 22px monospace'
     x.fillText('CRYPTOGRAPHICALLY SECURED AGAINST FORGERY', 512, 960)
   }
@@ -200,7 +200,7 @@ export default function Passport3D({ progress, active, reduced }) {
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 50)
-    camera.position.z = 8.2
+    camera.position.z = 6.3
 
     const disposables = []
     const track = (o) => {
@@ -208,7 +208,7 @@ export default function Passport3D({ progress, active, reduced }) {
       return o
     }
 
-    const edge = track(new THREE.MeshStandardMaterial({ color: '#1F2030', roughness: 0.5, metalness: 0.2 }))
+    const edge = track(new THREE.MeshStandardMaterial({ color: '#14110F', roughness: 0.5, metalness: 0.2 }))
     const frontMap = track(createPassportTexture(true))
     const backMap = track(createPassportTexture(false))
 
@@ -226,7 +226,7 @@ export default function Passport3D({ progress, active, reduced }) {
     const scanBeamGeo = track(new THREE.PlaneGeometry(2.42, 0.05))
     const scanBeamMat = track(
       new THREE.MeshBasicMaterial({
-        color: '#EDF2F4',
+        color: '#F3ECDF',
         transparent: true,
         opacity: 0.85,
         side: THREE.DoubleSide,
@@ -240,7 +240,7 @@ export default function Passport3D({ progress, active, reduced }) {
     const scanGlowGeo = track(new THREE.PlaneGeometry(2.42, 0.24))
     const scanGlowMat = track(
       new THREE.MeshBasicMaterial({
-        color: '#8D99AE',
+        color: '#C96A2B',
         transparent: true,
         opacity: 0.45,
         side: THREE.DoubleSide,
@@ -260,15 +260,15 @@ export default function Passport3D({ progress, active, reduced }) {
       return m
     })
 
-    // Glowing Orbital Ring in Cool Grey #8D99AE
+    // Glowing Orbital Ring in Burnt Orange #C96A2B
     const ring = new THREE.Mesh(
       track(new THREE.TorusGeometry(2.65, 0.016, 12, 140)),
-      track(new THREE.MeshBasicMaterial({ color: '#8D99AE', transparent: true, opacity: 0.55 }))
+      track(new THREE.MeshBasicMaterial({ color: '#C96A2B', transparent: true, opacity: 0.55 }))
     )
     ring.rotation.x = 1.3
     group.add(ring)
 
-    // Particle Field in Anti-Flash White #EDF2F4
+    // Particle Field in Ivory #F3ECDF
     const arr = new Float32Array(600)
     for (let i = 0; i < 600; i++) {
       arr[i] = (Math.random() - 0.5) * (i % 3 === 2 ? 10 : 20)
@@ -277,17 +277,17 @@ export default function Passport3D({ progress, active, reduced }) {
     pg.setAttribute('position', new THREE.BufferAttribute(arr, 3))
     const pts = new THREE.Points(
       pg,
-      track(new THREE.PointsMaterial({ color: '#EDF2F4', size: 0.035, transparent: true, opacity: 0.4 }))
+      track(new THREE.PointsMaterial({ color: '#F3ECDF', size: 0.035, transparent: true, opacity: 0.4 }))
     )
     scene.add(pts)
 
     // Lights
-    scene.add(new THREE.AmbientLight('#EDF2F4', 1.4))
+    scene.add(new THREE.AmbientLight('#F3ECDF', 1.4))
     const dl = new THREE.DirectionalLight('#FFFFFF', 2.8)
     dl.position.set(3, 4, 5)
     scene.add(dl)
 
-    const pl = new THREE.PointLight('#8D99AE', 45, 16)
+    const pl = new THREE.PointLight('#C96A2B', 45, 16)
     pl.position.set(-3, -1, 3.5)
     scene.add(pl)
 
@@ -421,7 +421,7 @@ export default function Passport3D({ progress, active, reduced }) {
       ring.rotation.z = t * (0.14 + scanEnergy.current * 0.6)
       pts.rotation.y = t * 0.02 + s * 0.4
       group.rotation.y = -s * 0.4
-      camera.position.z = 8.2 + s * 1.8
+      camera.position.z = 6.3 + s * 1.8
 
       renderer.render(scene, camera)
     }

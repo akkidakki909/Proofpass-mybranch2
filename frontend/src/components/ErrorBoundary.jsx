@@ -15,7 +15,7 @@ export default class ErrorBoundary extends Component {
     if (this.props.fallback !== undefined) return this.props.fallback
     const f = this.first || { err: this.state.err }
     return (
-      <pre style={{ padding: 24, whiteSpace: 'pre-wrap', font: '14px monospace', color: 'var(--fg)' }}>
+      <pre style={{ padding: 24, whiteSpace: 'pre-wrap', font: '14px monospace', color: 'var(--ink)' }}>
         {String(f.err.stack || f.err)}
         {f.stack}
       </pre>

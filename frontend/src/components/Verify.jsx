@@ -4,6 +4,7 @@ import gsap from 'gsap'
 import Passport3D from './Passport3D.jsx'
 import ErrorBoundary from './ErrorBoundary.jsx'
 import { RM } from '../lib.js'
+import { L } from '../data.js'
 import {
   validateIntake,
   SAMPLE_RESUME_TEXT,
@@ -1003,7 +1004,7 @@ export default function Verify() {
                       {roleMatchData.rankedGaps.map((g) => (
                         <tr key={g.skill}>
                           <td><strong>{g.skill}</strong></td>
-                          <td><span className={`chip ${g.currentState}`}>{g.currentState}</span></td>
+                          <td><span className={`chip ${g.currentState}`}>{L[g.currentState] || g.currentState}</span></td>
                           <td>Weight {g.importance}</td>
                           <td>{g.recommendation}</td>
                         </tr>

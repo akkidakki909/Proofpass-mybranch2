@@ -1,6 +1,6 @@
 export default function Legal({ doc }) {
   return (
-    <main className="legal w">
+    <main id="main" className="legal w page">
       <h1>{doc.title}</h1>
       <p className="d m">{doc.date}</p>
       <p>{doc.intro}</p>
