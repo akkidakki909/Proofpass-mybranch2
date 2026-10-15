@@ -79,18 +79,18 @@ graph TD
 ---
 
 ## 🎯 Milestone 5: Git Blame Authorship & Commit Velocity Engine
-- [ ] Create `backend/verification/git_engine.py`.
-- [ ] Implement shallow-clone mechanism (`git clone --depth 50` or depth 1 into isolated tempdir).
-- [ ] Cap repository clone size to avoid hanging on massive repos.
-- [ ] Run `git blame --line-porcelain` on evidence files.
-- [ ] Calculate `authorship_pct`: candidate authored lines / total file lines.
-- [ ] Assign `authorship_signal`:
+- [x] Create `backend/verification/git_engine.py`.
+- [x] Implement shallow-clone mechanism (`git clone --depth 50` or depth 1 into isolated tempdir).
+- [x] Cap repository clone size to avoid hanging on massive repos.
+- [x] Run `git blame --line-porcelain` on evidence files.
+- [x] Calculate `authorship_pct`: candidate authored lines / total file lines.
+- [x] Assign `authorship_signal`:
   - `NONE`: `< 15%`
   - `PARTIAL`: `15% - 60%`
   - `STRONG`: `> 60%`
-- [ ] Compute commit count and basic velocity across candidate commits.
+- [x] Compute commit count and basic velocity across candidate commits.
 
-**Deliverable**: Blame engine returning verified authorship metrics without relying on non-existent GitHub REST blame endpoints.
+**Deliverable**: Blame engine returning verified authorship metrics without relying on non-existent GitHub REST blame endpoints. (Completed ✅)
 
 ---
 

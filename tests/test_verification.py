@@ -376,3 +376,99 @@ def test_locate_evidence_missing_claim():
     assert evidence.usage_depth == UsageDepth.NONE
     assert evidence.content_sha256 is None
 
+
+# ---------------------------------------------------------------------------
+# Milestone 5: Git Blame Authorship & Commit Velocity
+# ---------------------------------------------------------------------------
+
+from verification.git_engine import (
+    parse_git_blame_porcelain,
+    compute_file_authorship,
+    analyze_repo_commits,
+)
+
+
+SAMPLE_PORCELAIN_OUTPUT = """
+a1b2c3d4 1 1 2
+author Alice Smith
+author-mail <alice@example.com>
+author-time 1700000000
+filename main.py
+\tdef foo():
+a1b2c3d4 2 2
+author Alice Smith
+author-mail <alice@example.com>
+author-time 1700000000
+filename main.py
+\t    return 42
+e5f6g7h8 3 3 1
+author Bob Builder
+author-mail <bob@example.com>
+author-time 1700000100
+filename main.py
+\t# Comment added by Bob
+"""
+
+
+def test_parse_git_blame_porcelain_strong():
+    # Alice has 2 out of 3 lines = 66.7% -> STRONG
+    pct, signal, cand_lines, total_lines = parse_git_blame_porcelain(
+        SAMPLE_PORCELAIN_OUTPUT, ["Alice Smith", "alice"]
+    )
+    assert cand_lines == 2
+    assert total_lines == 3
+    assert pct == 0.6667
+    assert signal == AuthorshipSignal.STRONG
+
+
+def test_parse_git_blame_porcelain_partial():
+    # Bob has 1 out of 3 lines = 33.3% -> PARTIAL
+    pct, signal, cand_lines, total_lines = parse_git_blame_porcelain(
+        SAMPLE_PORCELAIN_OUTPUT, ["bob"]
+    )
+    assert cand_lines == 1
+    assert total_lines == 3
+    assert pct == 0.3333
+    assert signal == AuthorshipSignal.PARTIAL
+
+
+def test_parse_git_blame_porcelain_none():
+    # Charlie has 0 lines -> NONE
+    pct, signal, cand_lines, total_lines = parse_git_blame_porcelain(
+        SAMPLE_PORCELAIN_OUTPUT, ["charlie"]
+    )
+    assert cand_lines == 0
+    assert total_lines == 3
+    assert pct == 0.0
+    assert signal == AuthorshipSignal.NONE
+
+
+def test_compute_file_authorship_on_local_repo():
+    # Real git blame on local workspace repo
+    pct, signal = compute_file_authorship(
+        repo_path=".",
+        relative_file_path="backend/verification/models.py",
+        candidate_identities=["Ameya Morgaonkar", "ameya"],
+    )
+    assert pct > 0.0
+    assert signal in (AuthorshipSignal.STRONG, AuthorshipSignal.PARTIAL)
+
+    # Missing file returns 0.0
+    pct_missing, signal_missing = compute_file_authorship(
+        repo_path=".",
+        relative_file_path="non_existent_file.py",
+        candidate_identities=["ameya"],
+    )
+    assert pct_missing == 0.0
+    assert signal_missing == AuthorshipSignal.NONE
+
+
+def test_analyze_repo_commits_on_local_repo():
+    res = analyze_repo_commits(
+        repo_path=".",
+        candidate_identities=["Ameya Morgaonkar", "ameya"],
+    )
+    assert res["total_commits"] > 0
+    assert res["candidate_commits"] > 0
+    assert len(res["commits"]) > 0
+

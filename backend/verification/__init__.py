@@ -18,6 +18,12 @@ from .detector import (
     locate_evidence_for_claim,
     compute_content_sha256,
 )
+from .git_engine import (
+    parse_git_blame_porcelain,
+    compute_file_authorship,
+    shallow_clone_and_blame,
+    analyze_repo_commits,
+)
 
 __all__ = [
     "TrustCeiling",
@@ -33,4 +39,8 @@ __all__ = [
     "classify_usage_depth",
     "locate_evidence_for_claim",
     "compute_content_sha256",
+    "parse_git_blame_porcelain",
+    "compute_file_authorship",
+    "shallow_clone_and_blame",
+    "analyze_repo_commits",
 ]
