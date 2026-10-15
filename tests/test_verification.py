@@ -563,3 +563,117 @@ def test_compute_provenance():
     assert prov_empty == TrustCeiling.UNVERIFIED
 
 
+# ---------------------------------------------------------------------------
+# Milestone 7: Pipeline Assembly & Interoperability
+# ---------------------------------------------------------------------------
+
+from verification.verifier import verify
+from verification.fixtures import FIXTURE_CLAIMS
+from intelligence.state_engine import assess_all
+
+
+def test_verify_pipeline_strong_offline():
+    res = verify(
+        claims=FIXTURE_CLAIMS,
+        github_url="https://github.com/alex/fullstack-demo",
+        candidate_identity="alex",
+        allow_network=False,
+    )
+    assert res.provenance == TrustCeiling.PLATFORM_VERIFIED
+    assert len(res.evidence) == 3
+
+    react_ev = next(e for e in res.evidence if e.skill == "React")
+    assert react_ev.file_exists is True
+    assert react_ev.file_path == "src/App.tsx"
+    assert react_ev.usage_depth == UsageDepth.SUBSTANTIAL
+    assert react_ev.authorship_signal == AuthorshipSignal.STRONG
+    assert react_ev.conflicts == []
+
+    aws_ev = next((e for e in res.evidence if e.skill == "AWS"), None)
+    assert aws_ev is None  # Uncorroborated skill has no evidence
+
+    # Feed into M4 assess_all pipeline
+    assessments = assess_all(FIXTURE_CLAIMS, res)
+    state_map = {a.name: a.claim_state.value for a in assessments}
+    assert state_map["React"] == "Supported"  # One micro-quiz away from Verified!
+    assert state_map["Python"] == "Supported"
+    assert state_map["AWS"] == "Claimed"  # Missing evidence -> Claimed
+
+
+def test_verify_pipeline_conflict_offline():
+    res = verify(
+        claims=FIXTURE_CLAIMS,
+        github_url="https://github.com/alex/react-tutorial",
+        candidate_identity="alex",
+        allow_network=False,
+    )
+    assert res.repo.is_fork is True
+    assert res.repo.fork_of == "facebook/react-tutorial"
+
+    react_ev = next(e for e in res.evidence if e.skill == "React")
+    assert len(react_ev.conflicts) == 1
+    assert "forked tutorial repo" in react_ev.conflicts[0]
+
+    # Feed into M4 assess_all pipeline -> Contradicted!
+    assessments = assess_all(FIXTURE_CLAIMS, res)
+    state_map = {a.name: a.claim_state.value for a in assessments}
+    assert state_map["React"] == "Contradicted"
+
+
+# ---------------------------------------------------------------------------
+# Milestone 8: Hardening & Edge-Case Testing
+# ---------------------------------------------------------------------------
+
+def test_verify_edge_case_empty_claims():
+    res = verify(
+        claims=[],
+        github_url="https://github.com/alex/demo",
+        allow_network=False,
+    )
+    assert res.evidence == []
+    assert res.provenance == TrustCeiling.UNVERIFIED
+
+
+def test_verify_edge_case_invalid_url():
+    res = verify(
+        claims=FIXTURE_CLAIMS,
+        github_url="not-a-valid-url-format",
+        allow_network=True,
+    )
+    assert res.provenance == TrustCeiling.UNVERIFIED
+    for ev in res.evidence:
+        assert ev.file_exists is False
+
+
+def test_verify_edge_case_private_or_404_repo():
+    mock_client = MagicMock()
+    mock_client.get_repo_metadata.side_effect = RepoNotFoundError("Private repo")
+
+    res = verify(
+        claims=FIXTURE_CLAIMS,
+        github_url="https://github.com/private/repo",
+        github_client=mock_client,
+        allow_network=True,
+    )
+    assert res.provenance == TrustCeiling.UNVERIFIED
+    for ev in res.evidence:
+        assert ev.file_exists is False
+
+
+def test_verify_edge_case_empty_tree():
+    mock_client = MagicMock()
+    mock_client.get_repo_metadata.return_value = RepoMetadata(is_fork=False)
+    mock_client.get_repo_tree.return_value = []  # Empty repository!
+    mock_client.get_commit_activity.return_value = {"commit_count": 0}
+
+    res = verify(
+        claims=FIXTURE_CLAIMS,
+        github_url="https://github.com/alex/empty-repo",
+        github_client=mock_client,
+        allow_network=True,
+    )
+    assert res.provenance == TrustCeiling.UNVERIFIED
+    for ev in res.evidence:
+        assert ev.file_exists is False
+
+

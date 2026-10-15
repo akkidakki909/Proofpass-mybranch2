@@ -107,20 +107,20 @@ graph TD
 ---
 
 ## 🎯 Milestone 7: Pipeline Assembly & Offline Fixture Repo
-- [ ] Implement top-level `verify(claims, github_url)` orchestrator in `backend/verification/__init__.py`.
-- [ ] Build offline fixtures in `backend/verification/fixtures.py`:
+- [x] Implement top-level `verify(claims, github_url)` orchestrator in `backend/verification/__init__.py`.
+- [x] Build offline fixtures in `backend/verification/fixtures.py`:
   - Strong candidate fixture
   - Forked tutorial conflict fixture
   - Empty/missing file fixture
-- [ ] Allow `verify(..., allow_network=False)` to use local fixture files for reproducible offline testing.
+- [x] Allow `verify(..., allow_network=False)` to use local fixture files for reproducible offline testing.
 
-**Deliverable**: Fully connected `verify()` function producing valid `VerificationResult` instances.
+**Deliverable**: Fully connected `verify()` function producing valid `VerificationResult` instances. (Completed ✅)
 
 ---
 
 ## 🎯 Milestone 8: Hardening & Edge-Case Testing
-- [ ] Create `tests/test_verification.py`.
-- [ ] Test coverage:
+- [x] Create `tests/test_verification.py`.
+- [x] Test coverage:
   - Empty repository handling
   - Missing file / dead `repo_hint`
   - Unsupported languages
@@ -128,6 +128,6 @@ graph TD
   - Rate limit caching
   - Corrupt PDF handling
   - Fork conflict detection
-- [ ] Verify test suite passes alongside existing M4 tests (`pytest tests/`).
+- [x] Verify test suite passes alongside existing M4 tests (`pytest tests/`).
 
-**Deliverable**: 100% passing test suite across all edge cases.
+**Deliverable**: 100% passing test suite across all edge cases. (Completed ✅)

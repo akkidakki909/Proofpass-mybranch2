@@ -125,6 +125,14 @@ def classify_usage_depth(
         hits = len(re.findall(pattern, content, flags=re.IGNORECASE))
         total_hits += hits
 
+    # For language skills (Python, TypeScript, Go, etc.), source files written in that language count as usage
+    normalized_skill = skill.lower().strip()
+    ext = "." + file_path.split(".")[-1].lower() if "." in file_path else ""
+    if total_hits == 0 and normalized_skill in LANGUAGE_EXTENSIONS and ext in LANGUAGE_EXTENSIONS[normalized_skill]:
+        code_lines = len([l for l in content.splitlines() if l.strip()])
+        if code_lines >= 5:
+            total_hits = code_lines
+
     if total_hits == 0:
         return UsageDepth.NONE, 0
 

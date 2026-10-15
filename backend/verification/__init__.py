@@ -25,6 +25,12 @@ from .git_engine import (
     analyze_repo_commits,
 )
 from .heuristics import detect_conflicts_for_evidence, compute_provenance
+from .verifier import verify
+from .fixtures import (
+    FIXTURE_CLAIMS,
+    EXPECTED_VERIFICATION_STRONG,
+    EXPECTED_VERIFICATION_CONFLICT,
+)
 
 __all__ = [
     "TrustCeiling",
@@ -46,4 +52,8 @@ __all__ = [
     "analyze_repo_commits",
     "detect_conflicts_for_evidence",
     "compute_provenance",
+    "verify",
+    "FIXTURE_CLAIMS",
+    "EXPECTED_VERIFICATION_STRONG",
+    "EXPECTED_VERIFICATION_CONFLICT",
 ]
