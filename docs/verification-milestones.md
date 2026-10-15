@@ -37,15 +37,15 @@ graph TD
 ---
 
 ## 🎯 Milestone 2: PDF Resume Text Extraction (`PyMuPDF`)
-- [ ] Create `backend/verification/resume_extractor.py`.
-- [ ] Implement `extract_resume_text(pdf_input: Union[str, Path, bytes]) -> str`.
-- [ ] Extract multi-page text cleanly, normalizing line breaks and whitespace.
-- [ ] Gracefully handle edge cases:
+- [x] Create `backend/verification/resume_extractor.py`.
+- [x] Implement `extract_resume_text(pdf_input: Union[str, Path, bytes]) -> str`.
+- [x] Extract multi-page text cleanly, normalizing line breaks and whitespace.
+- [x] Gracefully handle edge cases:
   - Password protected PDFs
   - Corrupted or non-PDF bytes
   - Empty or image-only scanned PDFs (clear descriptive errors)
 
-**Deliverable**: Tested `extract_resume_text` function with sample PDF tests.
+**Deliverable**: Tested `extract_resume_text` function with sample PDF tests. (Completed ✅)
 
 ---
 

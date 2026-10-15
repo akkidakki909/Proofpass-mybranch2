@@ -11,6 +11,7 @@ from .models import (
     RepoMetadata,
     VerificationResult,
 )
+from .resume_extractor import extract_resume_text
 
 __all__ = [
     "TrustCeiling",
@@ -20,4 +21,5 @@ __all__ = [
     "Evidence",
     "RepoMetadata",
     "VerificationResult",
+    "extract_resume_text",
 ]

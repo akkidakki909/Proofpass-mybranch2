@@ -79,3 +79,78 @@ def test_verification_result_serialization():
     restored = VerificationResult.model_validate(data)
     assert restored.provenance == TrustCeiling.PLATFORM_VERIFIED
     assert restored.repo.fork_of == "octocat/Spoon-Knife"
+
+
+# ---------------------------------------------------------------------------
+# Milestone 2: PDF Resume Text Extraction
+# ---------------------------------------------------------------------------
+
+import io
+import tempfile
+from pathlib import Path
+import pymupdf
+from verification.resume_extractor import extract_resume_text
+
+
+def _create_sample_pdf(pages_text: list[str]) -> bytes:
+    """Helper to generate in-memory PDF bytes with PyMuPDF."""
+    doc = pymupdf.open()
+    for text in pages_text:
+        page = doc.new_page()
+        page.insert_text((50, 72), text, fontsize=12)
+    pdf_bytes = doc.tobytes()
+    doc.close()
+    return pdf_bytes
+
+
+def test_extract_resume_text_from_bytes():
+    pdf_bytes = _create_sample_pdf(["Alex Developer\nExperience: Python Backend\nSkills: FastAPI, PostgreSQL"])
+    extracted = extract_resume_text(pdf_bytes)
+    assert "Alex Developer" in extracted
+    assert "Skills: FastAPI, PostgreSQL" in extracted
+
+
+def test_extract_resume_text_multipage():
+    pdf_bytes = _create_sample_pdf([
+        "Page 1: Summary\nExperienced full-stack developer.",
+        "Page 2: Projects\nBuilt distributed ledger with React and Python."
+    ])
+    with tempfile.TemporaryDirectory() as td:
+        pdf_path = Path(td) / "resume.pdf"
+        pdf_path.write_bytes(pdf_bytes)
+
+        # Test file path input
+        extracted = extract_resume_text(pdf_path)
+        assert "Page 1: Summary" in extracted
+        assert "Page 2: Projects" in extracted
+
+
+def test_extract_resume_text_stream():
+    pdf_bytes = _create_sample_pdf(["Stream test content"])
+    bio = io.BytesIO(pdf_bytes)
+    extracted = extract_resume_text(bio)
+    assert "Stream test content" in extracted
+
+
+def test_extract_resume_text_empty_doc_raises():
+    # Empty PDF with a blank page (no text)
+    doc = pymupdf.open()
+    doc.new_page()
+    empty_bytes = doc.tobytes()
+    doc.close()
+
+    with pytest.raises(ValueError, match="no extractable text"):
+        extract_resume_text(empty_bytes)
+
+
+def test_extract_resume_text_corrupt_bytes():
+    with pytest.raises(ValueError):
+        extract_resume_text(b"corrupt non-pdf raw bytes")
+
+
+def test_extract_resume_text_missing_file():
+    with tempfile.TemporaryDirectory() as td:
+        missing_file = Path(td) / "does_not_exist.pdf"
+        with pytest.raises(FileNotFoundError):
+            extract_resume_text(missing_file)
+
