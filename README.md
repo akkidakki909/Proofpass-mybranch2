@@ -1,29 +1,26 @@
-# ProofPass
+# ProofPass — M4: AI, Skill Intelligence and Passport Logic
 
-ProofPass web application and verification system — Skill passport with evidence-first hiring verification.
+This module owns `backend/intelligence/`. It implements:
 
-## Project Structure
+- **Claim extraction** from resume text (LLM + mock fallback)
+- **Target role parsing** from job descriptions (LLM + mock fallback)
+- **Deterministic claim-state engine** (Verified / Supported / Claimed / Contradicted)
+- **Cheat-resistant micro-quiz generation** (fake-premise traps, git history, micro-modifications)
+- **Role matching** with evidence-aware weights (100/60/20/0)
+- **Gap analysis** with iMocha assessment as the #1 recommended action
+- **Passport payload builder** (canonical JSON ready for M2 to hash and sign)
 
-- `frontend/`: ProofPass user interface and React application (React 18 + Vite, Three.js, GSAP ScrollTrigger, React Router).
-  - `frontend/src/`: React source components, data, and styles.
-  - `frontend/index.html`: Main HTML entrypoint.
-  - `frontend/vite.config.js`: Vite build configuration.
-  - `frontend/package.json`: Frontend package specifications.
+## Principles
 
-## Getting Started
+- The LLM **only proposes**. It never sets states or scores.
+- Deterministic code validates evidence.
+- Every LLM response is validated against a Pydantic schema.
+- Resume/repo text is treated as untrusted (prompt-injection sanitized).
+- Keys come from environment variables only.
 
-Run from the root directory:
+## Quick Start
 
 ```bash
-npm run dev       # Starts dev server via frontend
-npm run build     # Builds production bundle in frontend/dist
-```
-
-Or from the `frontend/` directory:
-
-```bash
-cd frontend
-npm install
-npm run dev
-npm run build
-```
+pip install -r requirements.txt
+cp .env.example .env
+python run_demo.py
