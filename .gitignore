@@ -6,3 +6,10 @@ frontend/dist
 frontend/.vite
 *.zip
 .DS_Store
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.env
+.venv/
+env/
