@@ -273,3 +273,106 @@ def test_github_client_error_handling():
     with pytest.raises(RateLimitError, match="rate limit"):
         client2.get_repo_metadata("alice", "demo")
 
+
+# ---------------------------------------------------------------------------
+# Milestone 4: Evidence Locator & Usage Depth Engine
+# ---------------------------------------------------------------------------
+
+import hashlib
+from verification.detector import (
+    compute_content_sha256,
+    classify_usage_depth,
+    locate_evidence_for_claim,
+)
+
+
+def test_compute_content_sha256():
+    content = "print('hello world')"
+    expected = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    assert compute_content_sha256(content) == expected
+
+
+def test_classify_usage_depth_levels():
+    # 1. NONE
+    depth, hits = classify_usage_depth("React", "main.py", "print('hello')")
+    assert depth == UsageDepth.NONE
+    assert hits == 0
+
+    # 2. DETECTED via manifest
+    depth, hits = classify_usage_depth(
+        "React", "package.json", '{"dependencies": {"react": "^18.0"}}', is_manifest=True
+    )
+    assert depth == UsageDepth.DETECTED
+
+    # 3. MODERATE
+    code_mod = """
+    import { useState, useEffect } from 'react';
+    function Component() { return <div>React app</div>; }
+    """
+    depth, hits = classify_usage_depth("React", "src/Comp.tsx", code_mod)
+    assert depth in (UsageDepth.MODERATE, UsageDepth.SUBSTANTIAL)
+
+    # 4. SUBSTANTIAL
+    code_sub = """
+    import React, { useState, useEffect, useCallback, useMemo } from 'react';
+    export class CustomReactProvider extends React.Component {
+        render() {
+            return <React.Fragment>{this.props.children}</React.Fragment>;
+        }
+    }
+    """
+    depth, hits = classify_usage_depth("React", "src/App.tsx", code_sub)
+    assert depth == UsageDepth.SUBSTANTIAL
+    assert hits >= 4
+
+
+def test_locate_evidence_using_repo_hint():
+    claim = Claim(skill="React", resume_pointer="line 1", repo_hint="src/App.tsx")
+    file_tree = [
+        {"path": "package.json", "type": "blob"},
+        {"path": "src/App.tsx", "type": "blob"},
+    ]
+    files = {
+        "src/App.tsx": "import React from 'react'; export default function App() { return <div>React</div>; }",
+        "package.json": '{"dependencies": {"react": "^18.0.0"}}',
+    }
+
+    evidence = locate_evidence_for_claim(claim, file_tree, lambda p: files.get(p))
+    assert evidence.file_exists is True
+    assert evidence.file_path == "src/App.tsx"
+    assert evidence.content_sha256 is not None
+    assert evidence.usage_depth in (UsageDepth.MODERATE, UsageDepth.SUBSTANTIAL)
+
+
+def test_locate_evidence_using_manifest_fallback():
+    # No repo_hint provided, should discover React in package.json
+    claim = Claim(skill="React", resume_pointer="line 10", repo_hint=None)
+    file_tree = [
+        {"path": "README.md", "type": "blob"},
+        {"path": "package.json", "type": "blob"},
+    ]
+    files = {
+        "README.md": "# Demo App",
+        "package.json": '{"dependencies": {"react": "^18.2.0"}}',
+    }
+
+    evidence = locate_evidence_for_claim(claim, file_tree, lambda p: files.get(p))
+    assert evidence.file_exists is True
+    assert evidence.file_path == "package.json"
+    assert evidence.usage_depth == UsageDepth.DETECTED
+
+
+def test_locate_evidence_missing_claim():
+    claim = Claim(skill="AWS", resume_pointer="line 20", repo_hint=None)
+    file_tree = [
+        {"path": "main.py", "type": "blob"},
+    ]
+    files = {
+        "main.py": "def hello(): return 'world'",
+    }
+
+    evidence = locate_evidence_for_claim(claim, file_tree, lambda p: files.get(p))
+    assert evidence.file_exists is False
+    assert evidence.usage_depth == UsageDepth.NONE
+    assert evidence.content_sha256 is None
+

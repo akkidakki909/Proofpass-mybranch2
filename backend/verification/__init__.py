@@ -13,6 +13,11 @@ from .models import (
 )
 from .resume_extractor import extract_resume_text
 from .github_client import GitHubClient, parse_github_url
+from .detector import (
+    classify_usage_depth,
+    locate_evidence_for_claim,
+    compute_content_sha256,
+)
 
 __all__ = [
     "TrustCeiling",
@@ -25,4 +30,7 @@ __all__ = [
     "extract_resume_text",
     "GitHubClient",
     "parse_github_url",
+    "classify_usage_depth",
+    "locate_evidence_for_claim",
+    "compute_content_sha256",
 ]

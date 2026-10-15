@@ -62,19 +62,19 @@ graph TD
 ---
 
 ## 🎯 Milestone 4: Evidence Locator & Regex Usage-Depth Engine
-- [ ] Create `backend/verification/detector.py`.
-- [ ] Strategy for finding evidence for each claim:
+- [x] Create `backend/verification/detector.py`.
+- [x] Strategy for finding evidence for each claim:
   1. Check explicit `repo_hint` (e.g. `src/App.tsx`).
   2. Search package manifests (`package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, etc.).
   3. Search code files by relevant extensions (`.py`, `.tsx`, `.ts`, `.js`, `.go`, `.rs`, `.sql`).
-- [ ] Compute `content_sha256` of identified evidence files.
-- [ ] Regex-based usage depth scoring:
+- [x] Compute `content_sha256` of identified evidence files.
+- [x] Regex-based usage depth scoring:
   - `NONE`: No evidence found or file missing.
   - `DETECTED`: Present in manifest or single import.
   - `MODERATE`: Multiple imports or basic standard usage.
   - `SUBSTANTIAL`: Core architectural usage, class definitions, function calls, multiple occurrences.
 
-**Deliverable**: Deterministic evidence discovery and usage-depth classification.
+**Deliverable**: Deterministic evidence discovery and usage-depth classification. (Completed ✅)
 
 ---
 
