@@ -154,3 +154,122 @@ def test_extract_resume_text_missing_file():
         with pytest.raises(FileNotFoundError):
             extract_resume_text(missing_file)
 
+
+# ---------------------------------------------------------------------------
+# Milestone 3: GitHub Client & URL Parsing
+# ---------------------------------------------------------------------------
+
+import base64
+from unittest.mock import MagicMock
+from verification.github_client import (
+    parse_github_url,
+    GitHubClient,
+    RepoNotFoundError,
+    RateLimitError,
+)
+
+
+def test_parse_github_url_valid():
+    assert parse_github_url("https://github.com/torvalds/linux") == ("torvalds", "linux")
+    assert parse_github_url("http://github.com/facebook/react.git") == ("facebook", "react")
+    assert parse_github_url("github.com/psf/requests/") == ("psf", "requests")
+    assert parse_github_url("git@github.com:openai/openai-python.git") == ("openai", "openai-python")
+
+
+def test_parse_github_url_invalid():
+    with pytest.raises(ValueError, match="empty"):
+        parse_github_url("")
+
+    with pytest.raises(ValueError, match="Invalid GitHub host"):
+        parse_github_url("https://gitlab.com/user/project")
+
+    with pytest.raises(ValueError, match="Expected owner and repository"):
+        parse_github_url("https://github.com/lonely-owner")
+
+
+def test_github_client_metadata_and_caching():
+    mock_session = MagicMock()
+    # Mock /repos/owner/repo
+    mock_resp = MagicMock()
+    mock_resp.ok = True
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "fork": True,
+        "parent": {"full_name": "facebook/react-tutorial"},
+        "default_branch": "main",
+        "size": 1540,
+    }
+    mock_session.get.return_value = mock_resp
+
+    client = GitHubClient(token="mock_tok", session=mock_session)
+    meta = client.get_repo_metadata("alice", "react-tutorial")
+
+    assert meta.is_fork is True
+    assert meta.fork_of == "facebook/react-tutorial"
+    assert meta.default_branch == "main"
+    assert meta.size_kb == 1540
+    assert mock_session.get.call_count == 1
+
+    # Second call should be served from in-memory cache
+    meta_cached = client.get_repo_metadata("alice", "react-tutorial")
+    assert meta_cached.is_fork is True
+    assert mock_session.get.call_count == 1  # No additional network call!
+
+
+def test_github_client_tree_and_file_content():
+    mock_session = MagicMock()
+
+    # 1. Mock tree response
+    tree_resp = MagicMock()
+    tree_resp.ok = True
+    tree_resp.status_code = 200
+    tree_resp.json.return_value = {
+        "tree": [
+            {"path": "package.json", "type": "blob", "size": 120},
+            {"path": "src/App.tsx", "type": "blob", "size": 850},
+        ]
+    }
+
+    # 2. Mock file content response (base64 encoded)
+    file_resp = MagicMock()
+    file_resp.ok = True
+    file_resp.status_code = 200
+    encoded = base64.b64encode(b'{"name": "demo", "dependencies": {"react": "^18.0"}}').decode("utf-8")
+    file_resp.json.return_value = {"content": encoded, "encoding": "base64"}
+
+    mock_session.get.side_effect = [tree_resp, file_resp]
+
+    client = GitHubClient(token="mock_tok", session=mock_session)
+    tree = client.get_repo_tree("alice", "demo", "main")
+    assert len(tree) == 2
+    assert tree[0]["path"] == "package.json"
+
+    content = client.get_file_content("alice", "demo", "package.json")
+    assert '"react": "^18.0"' in content
+
+
+def test_github_client_error_handling():
+    mock_session = MagicMock()
+
+    # 404 response
+    not_found_resp = MagicMock()
+    not_found_resp.ok = False
+    not_found_resp.status_code = 404
+    mock_session.get.return_value = not_found_resp
+
+    client = GitHubClient(token="mock_tok", session=mock_session)
+    with pytest.raises(RepoNotFoundError):
+        client.get_repo_metadata("alice", "non-existent")
+
+    # 403 rate limit response
+    rate_limit_resp = MagicMock()
+    rate_limit_resp.ok = False
+    rate_limit_resp.status_code = 403
+    rate_limit_resp.headers = {"Content-Type": "application/json"}
+    rate_limit_resp.json.return_value = {"message": "API rate limit exceeded"}
+    mock_session.get.return_value = rate_limit_resp
+
+    client2 = GitHubClient(token="mock_tok", session=mock_session)
+    with pytest.raises(RateLimitError, match="rate limit"):
+        client2.get_repo_metadata("alice", "demo")
+

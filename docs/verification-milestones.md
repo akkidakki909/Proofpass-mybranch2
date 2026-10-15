@@ -50,14 +50,14 @@ graph TD
 ---
 
 ## 🎯 Milestone 3: GitHub Metadata & Cached Tree/File Fetcher
-- [ ] Create `backend/verification/github_client.py`.
-- [ ] URL parser extracting `owner`, `repo`, `branch` from standard GitHub URLs (`github.com/:owner/:repo`).
-- [ ] Authenticated REST API client using `GITHUB_TOKEN` from environment.
-- [ ] In-memory/disk response caching mechanism to guard against GitHub rate limits.
-- [ ] Fetch repository metadata: `is_fork`, `fork_of`, `size_kb`, default branch.
-- [ ] Guard against edge cases: invalid URLs, 404/private repositories, network outages.
+- [x] Create `backend/verification/github_client.py`.
+- [x] URL parser extracting `owner`, `repo`, `branch` from standard GitHub URLs (`github.com/:owner/:repo`).
+- [x] Authenticated REST API client using `GITHUB_TOKEN` from environment.
+- [x] In-memory/disk response caching mechanism to guard against GitHub rate limits.
+- [x] Fetch repository metadata: `is_fork`, `fork_of`, `size_kb`, default branch.
+- [x] Guard against edge cases: invalid URLs, 404/private repositories, network outages.
 
-**Deliverable**: `GitHubClient` capable of fetching metadata and repo trees safely.
+**Deliverable**: `GitHubClient` capable of fetching metadata and repo trees safely. (Completed ✅)
 
 ---
 

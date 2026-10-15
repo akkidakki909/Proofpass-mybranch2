@@ -12,6 +12,7 @@ from .models import (
     VerificationResult,
 )
 from .resume_extractor import extract_resume_text
+from .github_client import GitHubClient, parse_github_url
 
 __all__ = [
     "TrustCeiling",
@@ -22,4 +23,6 @@ __all__ = [
     "RepoMetadata",
     "VerificationResult",
     "extract_resume_text",
+    "GitHubClient",
+    "parse_github_url",
 ]
