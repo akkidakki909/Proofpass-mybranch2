@@ -95,14 +95,14 @@ graph TD
 ---
 
 ## 🎯 Milestone 6: Conflict & Anti-Fraud Detection
-- [ ] Create `backend/verification/heuristics.py`.
-- [ ] Conflict rules:
+- [x] Create `backend/verification/heuristics.py`.
+- [x] Conflict rules:
   - Forked repository with 0 original commits by candidate.
   - Tutorial-style template repository with zero candidate delta.
-- [ ] Populate `conflicts: List[str]` (e.g. `"forked tutorial repo with no original commits"`).
-- [ ] Compute `provenance` ceiling (`TrustCeiling.PLATFORM_VERIFIED`, `CANDIDATE_SUPPLIED`, etc.).
+- [x] Populate `conflicts: List[str]` (e.g. `"forked tutorial repo with no original commits"`).
+- [x] Compute `provenance` ceiling (`TrustCeiling.PLATFORM_VERIFIED`, `CANDIDATE_SUPPLIED`, etc.).
 
-**Deliverable**: Heuristic verification engine populating `conflicts` and `provenance`.
+**Deliverable**: Heuristic verification engine populating `conflicts` and `provenance`. (Completed ✅)
 
 ---
 

@@ -472,3 +472,94 @@ def test_analyze_repo_commits_on_local_repo():
     assert res["candidate_commits"] > 0
     assert len(res["commits"]) > 0
 
+
+# ---------------------------------------------------------------------------
+# Milestone 6: Conflict & Anti-Fraud Detection
+# ---------------------------------------------------------------------------
+
+from verification.heuristics import (
+    detect_conflicts_for_evidence,
+    compute_provenance,
+    is_tutorial_name,
+)
+
+
+def test_is_tutorial_name():
+    assert is_tutorial_name("facebook/react-tutorial") is True
+    assert is_tutorial_name("next-learn-starter") is True
+    assert is_tutorial_name("my-custom-production-service") is False
+    assert is_tutorial_name(None) is False
+
+
+def test_detect_conflicts_forked_tutorial_zero_commits():
+    meta = RepoMetadata(is_fork=True, fork_of="facebook/react-tutorial")
+    ev = Evidence(
+        claim_id="cl_1",
+        skill="React",
+        file_exists=True,
+        authorship_pct=0.0,
+        authorship_signal=AuthorshipSignal.NONE,
+    )
+    conflicts = detect_conflicts_for_evidence(meta, ev, candidate_commit_count=0, total_commits=15)
+    assert len(conflicts) == 1
+    assert "forked tutorial repo with no original commits" in conflicts[0]
+
+
+def test_detect_conflicts_forked_with_trivial_commits():
+    meta = RepoMetadata(is_fork=True, fork_of="facebook/react-tutorial")
+    ev = Evidence(
+        claim_id="cl_1",
+        skill="React",
+        file_exists=True,
+        authorship_pct=0.04,  # Only 4%
+        authorship_signal=AuthorshipSignal.NONE,
+    )
+    conflicts = detect_conflicts_for_evidence(meta, ev, candidate_commit_count=1, total_commits=10)
+    assert len(conflicts) == 1
+    assert "forked tutorial repo with no original commits" in conflicts[0]
+
+
+def test_detect_conflicts_non_fork_repo():
+    # Normal original repository with good authorship
+    meta = RepoMetadata(is_fork=False, fork_of=None)
+    ev = Evidence(
+        claim_id="cl_1",
+        skill="React",
+        file_exists=True,
+        authorship_pct=0.85,
+        authorship_signal=AuthorshipSignal.STRONG,
+    )
+    conflicts = detect_conflicts_for_evidence(meta, ev, candidate_commit_count=12, total_commits=12)
+    assert conflicts == []
+
+
+def test_detect_conflicts_missing_file_never_contradicted():
+    # Missing file alone is NEVER contradicted
+    meta = RepoMetadata(is_fork=True, fork_of="facebook/react-tutorial")
+    ev = Evidence(
+        claim_id="cl_1",
+        skill="AWS",
+        file_exists=False,
+    )
+    conflicts = detect_conflicts_for_evidence(meta, ev, candidate_commit_count=0, total_commits=15)
+    assert conflicts == []
+
+
+def test_compute_provenance():
+    meta = RepoMetadata(is_fork=False)
+    ev_present = Evidence(claim_id="c1", skill="React", file_exists=True)
+    ev_missing = Evidence(claim_id="c2", skill="AWS", file_exists=False)
+
+    # 1. GitHub repo with existing evidence -> Platform-Verified
+    prov = compute_provenance(meta, [ev_present, ev_missing], is_github_repo=True)
+    assert prov == TrustCeiling.PLATFORM_VERIFIED
+
+    # 2. Upload with existing evidence -> Candidate-Supplied
+    prov_upload = compute_provenance(meta, [ev_present], is_github_repo=False)
+    assert prov_upload == TrustCeiling.CANDIDATE_SUPPLIED
+
+    # 3. Only missing files -> Unverified
+    prov_empty = compute_provenance(meta, [ev_missing], is_github_repo=True)
+    assert prov_empty == TrustCeiling.UNVERIFIED
+
+

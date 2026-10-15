@@ -24,6 +24,7 @@ from .git_engine import (
     shallow_clone_and_blame,
     analyze_repo_commits,
 )
+from .heuristics import detect_conflicts_for_evidence, compute_provenance
 
 __all__ = [
     "TrustCeiling",
@@ -43,4 +44,6 @@ __all__ = [
     "compute_file_authorship",
     "shallow_clone_and_blame",
     "analyze_repo_commits",
+    "detect_conflicts_for_evidence",
+    "compute_provenance",
 ]
