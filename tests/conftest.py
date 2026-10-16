@@ -5,6 +5,12 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
 
+try:
+    import intelligence  # type: ignore
+except ModuleNotFoundError:
+    import Intelligence  # type: ignore
+    sys.modules["intelligence"] = Intelligence
+
 import pytest
 from intelligence.fixtures import (
     MOCK_CLAIMS, MOCK_VERIFICATION_STRONG, MOCK_VERIFICATION_CONFLICT,

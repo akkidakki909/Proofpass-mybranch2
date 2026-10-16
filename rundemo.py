@@ -67,7 +67,7 @@ def main():
     # 5. Dump full payload
     out_path = Path("passport_payload.json")
     out_path.write_text(passport.model_dump_json(indent=2))
-    print(f"\n✅ Full passport payload written to {out_path}")
+    print(f"\n[OK] Full passport payload written to {out_path}")
 
 
 if __name__ == "__main__":
