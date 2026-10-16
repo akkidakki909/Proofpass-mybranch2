@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import gsap from 'gsap'
 import Passport3D from './Passport3D.jsx'
+import HalfStepper from './HalfStepper.jsx'
+import VerifyBackground from './VerifyBackground.jsx'
+import LockedStage from './LockedStage.jsx'
 import ErrorBoundary from './ErrorBoundary.jsx'
+import VerificationChatbot from './VerificationChatbot.jsx'
 import { RM } from '../lib.js'
 import { L } from '../data.js'
 import {
@@ -50,10 +54,57 @@ export default function Verify() {
     8: 'waiting',
   })
 
-  // Live log lines
+  // Live log lines and chatbot visibility
   const [logs, setLogs] = useState([
     `[${new Date().toLocaleTimeString()}] System ready. Step 0 (Intake) active. Please provide a resume and evidence source.`,
   ])
+  const [showLogChat, setShowLogChat] = useState(false)
+  const [hasStartedVerification, setHasStartedVerification] = useState(false)
+  const [previewStep, setPreviewStep] = useState(null)
+  const [rattleCount, setRattleCount] = useState(0)
+
+  // Clear preview automatically whenever the real step changes
+  useEffect(() => {
+    setPreviewStep(null)
+  }, [currentStep])
+
+  // Cursor spotlight on glass and background dot grid
+  useEffect(() => {
+    let rafId = null
+    let latestEvt = null
+
+    const handlePointerMove = (e) => {
+      latestEvt = e
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          if (!latestEvt) return
+          const ev = latestEvt
+          latestEvt = null
+          rafId = null
+
+          // Set global cursor coordinates for background dot grid mask
+          document.documentElement.style.setProperty('--px', `${ev.clientX}px`)
+          document.documentElement.style.setProperty('--py', `${ev.clientY}px`)
+
+          // Set per-card spotlight coordinates for .glass elements
+          const glassCards = document.querySelectorAll('.glass')
+          glassCards.forEach((card) => {
+            const rect = card.getBoundingClientRect()
+            const mx = ev.clientX - rect.left
+            const my = ev.clientY - rect.top
+            card.style.setProperty('--mx', `${mx}px`)
+            card.style.setProperty('--my', `${my}px`)
+          })
+        })
+      }
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true })
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      if (rafId) cancelAnimationFrame(rafId)
+    }
+  }, [])
 
   // Form State (Step 0)
   const [resumeMode, setResumeMode] = useState('paste')
@@ -149,6 +200,7 @@ export default function Verify() {
 
     setFormErrors({})
     setIntakeData(formPayload)
+    setHasStartedVerification(true)
     setStepStatus((s) => ({ ...s, 0: 'done', 1: 'running' }))
     setHighestUnlockedStep((h) => Math.max(h, 1))
     setCurrentStep(1)
@@ -351,65 +403,75 @@ export default function Verify() {
   }
 
   // Stepper navigation
-  const handleStepClick = (stepId) => {
+  const handleStepSelect = (stepId) => {
+    // Clicking a completed stage goes back to it
     if (stepId <= highestUnlockedStep) {
       setCurrentStep(stepId)
+      setPreviewStep(null)
     }
   }
 
+  const handleStepPreview = (stepId) => {
+    if (stepId > currentStep) {
+      setPreviewStep(stepId)
+      setRattleCount((c) => c + 1)
+    }
+  }
+
+  const intakeValid = validateIntake({
+    resumeText,
+    resumeFile,
+    githubUrl: evidenceMode === 'github' ? githubUrl : '',
+    zipFile: evidenceMode === 'zip' ? zipFile : null,
+    targetRole,
+    consentAi,
+    consentRepo,
+  }).valid
+  const allChecksAnswered = microChecks.every((m) => m.answered)
+
+  const GateHint = ({ show, text }) =>
+    show ? <span className="gate-hint m">{text}</span> : null
+
   return (
     <div className="verify-page">
+      {/* Living Interactive Background */}
+      <VerifyBackground currentStep={currentStep} />
+
+      {/* Half-circle pipeline dial (portals to document.body) */}
+      <HalfStepper
+        steps={STEP_DEFINITIONS}
+        current={currentStep}
+        status={stepStatus}
+        previewStep={previewStep}
+        onSelect={handleStepSelect}
+        onPreview={handleStepPreview}
+        onClearPreview={() => setPreviewStep(null)}
+      />
+
       <div className="w verify-layout">
-        {/* LEFT COLUMN: PERSISTENT VERTICAL STEPPER */}
-        <aside className="verify-stepper-sidebar" aria-label="Verification Pipeline Stepper">
-          <div className="stepper-header">
-            <span className="k m">PIPELINE STEPPER</span>
-            <span className="stepper-count m">STEP 0{currentStep} OF 08</span>
-          </div>
-
-          <nav className="stepper-nav">
-            {STEP_DEFINITIONS.map((s) => {
-              const isCurrent = currentStep === s.id
-              const isDone = stepStatus[s.id] === 'done'
-              const isFlagged = stepStatus[s.id] === 'flagged'
-              const isLocked = s.id > highestUnlockedStep
-
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`stepper-item ${isCurrent ? 'current' : ''} ${isDone ? 'done' : ''} ${isFlagged ? 'flagged' : ''} ${isLocked ? 'locked' : ''}`}
-                  onClick={() => handleStepClick(s.id)}
-                  disabled={isLocked}
-                  aria-current={isCurrent ? 'step' : undefined}
-                >
-                  <div className="step-badge">
-                    <span className="step-idx m">{isDone ? 'OK' : `0${s.id}`}</span>
-                  </div>
-                  <div className="step-meta">
-                    <div className="step-name">{s.title}</div>
-                    <div className="step-sub m">{s.subtitle}</div>
-                  </div>
-                  <div className="step-state-tag m">
-                    {isCurrent ? '[Active]' : isDone ? '[Done]' : isFlagged ? '[Flagged]' : isLocked ? '[Locked]' : '[Waiting]'}
-                  </div>
-                </button>
-              )
-            })}
-          </nav>
-        </aside>
-
-        {/* RIGHT COLUMN: CURRENT STEP CONTENT IN IVORY CARDS + LOG PANEL */}
         <main className="verify-main-content">
-          <div className="step-card" ref={contentCardRef}>
-            {/* Step Header with aria-live */}
+          <div className="step-card glass" ref={contentCardRef} hidden={previewStep !== null}>
+            {/* Step Header with aria-live and Show/Hide log chatbot toggle */}
             <div className="step-card-header">
               <div>
                 <span className="k m">STEP 0{currentStep} / 08</span>
                 <h2>{STEP_DEFINITIONS[currentStep].title}</h2>
               </div>
-              <div className="step-status-indicator m" aria-live="polite">
-                STATUS: {stepStatus[currentStep].toUpperCase()}
+              <div className="step-card-header-right">
+                <button
+                  type="button"
+                  className={`log-toggle-header-btn ${showLogChat ? 'active' : ''}`}
+                  onClick={() => setShowLogChat((prev) => !prev)}
+                  aria-expanded={showLogChat}
+                  title={showLogChat ? 'Hide live verification log chatbot' : 'Show live verification log chatbot in right corner'}
+                >
+                  <span className={`log-indicator-dot ${isProcessing ? 'pulsing' : ''}`} />
+                  <span>{showLogChat ? 'Hide Verification Log' : 'Show Verification Log'}</span>
+                  <span className="log-count-pill m">{logs.length}</span>
+                </button>
+                <div className="step-status-indicator m" aria-live="polite">
+                  STATUS: {stepStatus[currentStep].toUpperCase()}
+                </div>
               </div>
             </div>
 
@@ -589,9 +651,12 @@ export default function Verify() {
                   {formErrors.consentRepo && <p className="field-error">{formErrors.consentRepo}</p>}
                 </div>
 
-                <button type="button" className="b mg" onClick={handleStartVerification}>
-                  Start verification pipeline <span className="btn-arrow" aria-hidden="true">-&gt;</span>
-                </button>
+                <div className="step-actions">
+                  <button type="button" className="b mg verify-submit-btn" onClick={handleStartVerification} disabled={!intakeValid}>
+                    Verify & Start Pipeline <span className="btn-arrow" aria-hidden="true">-&gt;</span>
+                  </button>
+                  <GateHint show={!intakeValid} text="Fill every required field and both consents to continue." />
+                </div>
               </div>
             )}
 
@@ -636,9 +701,12 @@ export default function Verify() {
                       setCurrentStep(2)
                       if (!proposeData) runStep2()
                     }}
+                  
+                    disabled={isProcessing || !readData}
                   >
                     Proceed to Step 2 (Propose) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
                   </button>
+                  <GateHint show={isProcessing || !readData} text="Wait for this step to finish to continue." />
                 </div>
               </div>
             )}
@@ -706,9 +774,12 @@ export default function Verify() {
                       setCurrentStep(3)
                       if (!evidenceData) runStep3()
                     }}
+                  
+                    disabled={isProcessing || !proposeData}
                   >
                     Proceed to Step 3 (Check Evidence) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
                   </button>
+                  <GateHint show={isProcessing || !proposeData} text="Wait for this step to finish to continue." />
                 </div>
               </div>
             )}
@@ -788,9 +859,12 @@ export default function Verify() {
                       setCurrentStep(4)
                       if (!authorshipData) runStep4()
                     }}
+                  
+                    disabled={isProcessing || !evidenceData}
                   >
                     Proceed to Step 4 (Authorship and Depth) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
                   </button>
+                  <GateHint show={isProcessing || !evidenceData} text="Wait for this step to finish to continue." />
                 </div>
               </div>
             )}
@@ -845,9 +919,12 @@ export default function Verify() {
                       setCurrentStep(5)
                       if (!statesData) runStep5()
                     }}
+                  
+                    disabled={isProcessing || !authorshipData}
                   >
                     Proceed to Step 5 (Assign States) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
                   </button>
+                  <GateHint show={isProcessing || !authorshipData} text="Wait for this step to finish to continue." />
                 </div>
               </div>
             )}
@@ -904,9 +981,12 @@ export default function Verify() {
                     onClick={() => {
                       setCurrentStep(6)
                     }}
+                  
+                    disabled={isProcessing || !statesData}
                   >
                     Proceed to Step 6 (Micro-checks) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
                   </button>
+                  <GateHint show={isProcessing || !statesData} text="Wait for this step to finish to continue." />
                 </div>
               </div>
             )}
@@ -964,9 +1044,10 @@ export default function Verify() {
                 )}
 
                 <div className="step-actions">
-                  <button type="button" className="b mg" onClick={completeStep6}>
+                  <button type="button" className="b mg" onClick={completeStep6} disabled={!allChecksAnswered}>
                     Complete micro-checks and calculate role match <span className="btn-arrow" aria-hidden="true">-&gt;</span>
                   </button>
+                  <GateHint show={!allChecksAnswered} text="Answer every micro-check to continue." />
                 </div>
               </div>
             )}
@@ -1021,9 +1102,12 @@ export default function Verify() {
                       setCurrentStep(8)
                       if (!passportData) runStep8()
                     }}
+                  
+                    disabled={isProcessing || !roleMatchData}
                   >
                     Proceed to Step 8 (Issue Passport) <span className="btn-arrow" aria-hidden="true">-&gt;</span>
                   </button>
+                  <GateHint show={isProcessing || !roleMatchData} text="Wait for this step to finish to continue." />
                 </div>
               </div>
             )}
@@ -1146,19 +1230,34 @@ export default function Verify() {
             )}
           </div>
 
-          {/* SOFT BLACK LIVE-LOG PANEL UNDER CURRENT STEP CARD */}
-          <section className="verify-live-log-panel" aria-label="Live verification log console">
-            <div className="log-panel-header">
-              <span className="m log-title">LIVE VERIFICATION LOG</span>
-              <span className="m log-status">ENGINE: DETERMINISTIC + ADVISORY MODEL</span>
-            </div>
-            <div className="log-console-body m" ref={logTerminalRef}>
-              {logs.map((line, idx) => (
-                <div key={idx} className="log-line">{line}</div>
-              ))}
-            </div>
-          </section>
+          {/* Locked Stage Chained Card (shown during preview while real card stays mounted with hidden attribute) */}
+          {previewStep !== null && (
+            <LockedStage
+              stepId={previewStep}
+              currentStep={currentStep}
+              onBack={() => setPreviewStep(null)}
+              onLookAt={(s) => {
+                setPreviewStep(s)
+                setRattleCount((c) => c + 1)
+              }}
+              rattleTrigger={rattleCount}
+            />
+          )}
+
         </main>
+
+        {/* RIGHT CORNER FLOATING CHATBOT-STYLE LIVE VERIFICATION LOG WIDGET */}
+        <VerificationChatbot
+          isOpen={showLogChat}
+          onToggle={() => setShowLogChat((prev) => !prev)}
+          onClose={() => setShowLogChat(false)}
+          logs={logs}
+          currentStep={currentStep}
+          currentStepTitle={STEP_DEFINITIONS[currentStep]?.title || ''}
+          stepStatus={stepStatus[currentStep] || 'waiting'}
+          isProcessing={isProcessing}
+          hasStarted={hasStartedVerification || currentStep > 0}
+        />
       </div>
     </div>
   )
