@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import gsap from 'gsap'
 import { RM } from '../lib.js'
 
@@ -457,7 +456,7 @@ export default function LockedStage({
 
     const { w, h } = dims
     const cx = w / 2
-    const cy = h / 2
+    const cy = h / 2 + 36
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
     // Sized with capped dpr
@@ -473,21 +472,21 @@ export default function LockedStage({
     // Chain 1: Top-Left to Bottom-Right through center
     const c1 = createRope(
       { x: -14, y: h * 0.12 },
-      { x: cx, y: cy + 12 },
+      { x: cx, y: cy },
       { x: w + 14, y: h * 0.88 },
       18
     )
     // Chain 2: Top-Right to Bottom-Left through center
     const c2 = createRope(
       { x: w + 14, y: h * 0.12 },
-      { x: cx, y: cy + 12 },
+      { x: cx, y: cy },
       { x: -14, y: h * 0.88 },
       18
     )
     // Chain 3: Lower horizontal run
     const c3 = createRope(
       { x: -14, y: h * 0.65 },
-      { x: cx, y: h * 0.7 },
+      { x: cx, y: cy + 45 },
       { x: w + 14, y: h * 0.65 },
       18
     )
@@ -499,9 +498,9 @@ export default function LockedStage({
     s.w = w
     s.h = h
     s.lock.x = cx
-    s.lock.y = cy + 12
+    s.lock.y = cy
     s.lock.oldX = cx
-    s.lock.oldY = cy + 12
+    s.lock.oldY = cy
     s.lock.angle = 0
     s.lock.angularVelocity = 0
     s.entranceDone = false
@@ -756,7 +755,7 @@ export default function LockedStage({
 
     // Darker ambient contact shadow where chains cross
     const cx = w / 2
-    const cy = h / 2
+    const cy = h / 2 + 36
     ctx.save()
     ctx.drawImage(sprites.shadow, cx - 34, cy - 14, 68, 48)
     ctx.restore()
@@ -810,9 +809,10 @@ export default function LockedStage({
   const stepDef = STEP_DEFINITIONS[stepId] || { title: 'Pipeline Stage' }
   const prevStep = Math.max(0, stepId - 1)
   const prevTitle = STEP_DEFINITIONS[prevStep]?.title || `Step 0${prevStep}`
+  const currentStepTitle = STEP_DEFINITIONS[currentStep]?.title || `Step 0${currentStep}`
   const isFar = stepId > currentStep + 1
   const cx = dims.w / 2
-  const cy = dims.h / 2
+  const cy = dims.h / 2 + 36
 
   return (
     <div
@@ -875,59 +875,41 @@ export default function LockedStage({
         style={{
           position: 'absolute',
           left: `${cx}px`,
-          top: `${cy + 34}px`,
+          top: `${cy + 22}px`,
           transform: 'translate(-50%, -50%)',
           zIndex: 16,
         }}
       />
 
-      {/* Fixed Pop-up rendered via portal into document.body */}
-      {typeof document !== 'undefined' &&
-        createPortal(
-          <div
-            className={`locked-stage-popup-wrap ${isCardOnScreen ? 'visible' : 'hidden'}`}
-            aria-hidden={!isCardOnScreen}
-          >
-            <div
-              className="locked-hanging-tag"
-              role="status"
-              aria-live="polite"
-              tabIndex={0}
+      {/* Top Message Tag inside the Card (Change 1) */}
+      <div
+        className={`locked-stage-tag-wrap ${isCardOnScreen ? 'visible' : 'hidden'}`}
+        aria-hidden={!isCardOnScreen}
+      >
+        <div
+          className="locked-hanging-tag"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="tag-msg">
+            {isFar
+              ? `Complete the earlier stages first. Complete Step 0${prevStep}, ${prevTitle}, to unlock this stage.`
+              : `Complete Step 0${prevStep}, ${prevTitle}, to unlock this stage.`}
+          </p>
+          <div className="tag-btn-row">
+            <button
+              type="button"
+              className="b sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                onBack()
+              }}
             >
-              <div className="tag-grommet" aria-hidden="true" />
-              <p className="tag-msg">
-                {isFar
-                  ? `Complete the earlier stages first. Complete Step 0${prevStep}, ${prevTitle}, to unlock this stage.`
-                  : `Complete Step 0${prevStep}, ${prevTitle}, to unlock this stage.`}
-              </p>
-              <div className="tag-btn-row">
-                <button
-                  type="button"
-                  className="b sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onBack()
-                  }}
-                >
-                  Back to step 0{currentStep}
-                </button>
-                {isFar && (
-                  <button
-                    type="button"
-                    className="b g sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onLookAt(prevStep)
-                    }}
-                  >
-                    Look at step 0{prevStep}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+              Complete Step 0{currentStep}: {currentStepTitle}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -227,7 +227,7 @@ export default function Home() {
           start: 'top 60%',
           end: 'bottom 60%',
           onUpdate: (self) => {
-            gsap.to(fill, { scaleY: self.progress, duration: 0.5, ease: 'power2.out', overwrite: true })
+            gsap.to(fill, { scaleY: self.progress, duration: 0.5, ease: 'power3.out', overwrite: true })
             mark()
           },
           onRefresh: mark,

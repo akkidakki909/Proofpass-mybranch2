@@ -1,4 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
+
+const ChatBubble = memo(function ChatBubble({ item }) {
+  return (
+    <div className={`chat-bubble log-bubble ${item.type}`}>
+      <div className="bubble-meta">
+        {item.time && <span className="bubble-time m">{item.time}</span>}
+        <span className={`bubble-type-tag m ${item.type}`}>
+          {item.type.toUpperCase()}
+        </span>
+      </div>
+      <div className="bubble-content m">
+        {item.text}
+      </div>
+    </div>
+  )
+})
 
 export default function VerificationChatbot({
   isOpen,
@@ -269,17 +285,7 @@ export default function VerificationChatbot({
 
             {/* LOG MESSAGES */}
             {filteredLogs.map((item, idx) => (
-              <div key={idx} className={`chat-bubble log-bubble ${item.type}`}>
-                <div className="bubble-meta">
-                  {item.time && <span className="bubble-time m">{item.time}</span>}
-                  <span className={`bubble-type-tag m ${item.type}`}>
-                    {item.type.toUpperCase()}
-                  </span>
-                </div>
-                <div className="bubble-content m">
-                  {item.text}
-                </div>
-              </div>
+              <ChatBubble key={idx} item={item} />
             ))}
 
             {isProcessing && (

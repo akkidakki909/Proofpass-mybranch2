@@ -1,9 +1,41 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import gsap from 'gsap'
 import { RM, scroller } from '../lib.js'
 
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
+
+const MobileChip = memo(function MobileChip({ st, isDone, isCurrent, isPreviewed, isLocked, onClick }) {
+  let stateClass = 'chip-locked'
+  if (isCurrent) stateClass = 'chip-current'
+  else if (isPreviewed) stateClass = 'chip-previewed'
+  else if (isDone) stateClass = 'chip-done'
+
+  return (
+    <button
+      type="button"
+      className={`mobile-chip ${stateClass}`}
+      onClick={onClick}
+      aria-label={`Step 0${st.id}: ${st.title} (${isDone ? 'Done' : isCurrent ? 'Current' : 'Locked'})`}
+      aria-current={isCurrent ? 'step' : undefined}
+    >
+      <span className="chip-digit">{st.id}</span>
+      {isDone && (
+        <span className="chip-badge badge-done" aria-hidden="true">
+          ✓
+        </span>
+      )}
+      {isLocked && (
+        <span className="chip-badge badge-locked" aria-hidden="true">
+          <svg viewBox="0 0 12 12" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="5" width="8" height="6" rx="1.5" />
+            <path d="M4 5V3.5a2 2 0 1 1 4 0V5" />
+          </svg>
+        </span>
+      )}
+    </button>
+  )
+})
 
 export default function HalfStepper({
   steps,
@@ -502,43 +534,17 @@ export default function HalfStepper({
   const mobileChips = (
     <nav className="mobile-chip-stepper" aria-label="Pipeline stages">
       <div className="mobile-chip-scroll">
-        {steps.map((st) => {
-          const isDone = st.id < current || status[st.id] === 'done'
-          const isCurrent = st.id === current && previewStep === null
-          const isPreviewed = previewStep === st.id
-          const isLocked = st.id > current && !isPreviewed
-
-          let stateClass = 'chip-locked'
-          if (isCurrent) stateClass = 'chip-current'
-          else if (isPreviewed) stateClass = 'chip-previewed'
-          else if (isDone) stateClass = 'chip-done'
-
-          return (
-            <button
-              key={st.id}
-              type="button"
-              className={`mobile-chip ${stateClass}`}
-              onClick={() => handleNodeClick(st.id)}
-              aria-label={`Step 0${st.id}: ${st.title} (${isDone ? 'Done' : isCurrent ? 'Current' : 'Locked'})`}
-              aria-current={isCurrent ? 'step' : undefined}
-            >
-              <span className="chip-digit">{st.id}</span>
-              {isDone && (
-                <span className="chip-badge badge-done" aria-hidden="true">
-                  ✓
-                </span>
-              )}
-              {isLocked && (
-                <span className="chip-badge badge-locked" aria-hidden="true">
-                  <svg viewBox="0 0 12 12" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="2" y="5" width="8" height="6" rx="1.5" />
-                    <path d="M4 5V3.5a2 2 0 1 1 4 0V5" />
-                  </svg>
-                </span>
-              )}
-            </button>
-          )
-        })}
+        {steps.map((st) => (
+          <MobileChip
+            key={st.id}
+            st={st}
+            isDone={st.id < current || status[st.id] === 'done'}
+            isCurrent={st.id === current && previewStep === null}
+            isPreviewed={previewStep === st.id}
+            isLocked={st.id > current && previewStep !== st.id}
+            onClick={() => handleNodeClick(st.id)}
+          />
+        ))}
       </div>
     </nav>
   )

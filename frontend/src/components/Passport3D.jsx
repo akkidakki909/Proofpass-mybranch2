@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import gsap from 'gsap'
 
 const NODE_COLORS = ['#1D1A17', '#E0742F', '#F3ECDF', '#E0742F', '#1D1A17', '#FFFFFF']
 const ROWS = [
@@ -372,10 +373,8 @@ export default function Passport3D({ progress, active, reduced }) {
     window.addEventListener('pointercancel', onPointerUp)
 
     const clock = new THREE.Clock()
-    let raf = 0
 
     const loop = () => {
-      raf = requestAnimationFrame(loop)
       if (!live.current) return
 
       const t = reduced ? 0 : clock.getElapsedTime()
@@ -426,10 +425,10 @@ export default function Passport3D({ progress, active, reduced }) {
       renderer.render(scene, camera)
     }
 
-    loop()
+    gsap.ticker.add(loop)
 
     return () => {
-      cancelAnimationFrame(raf)
+      gsap.ticker.remove(loop)
       ro.disconnect()
       el.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)

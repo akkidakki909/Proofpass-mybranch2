@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Lenis from 'lenis'
 import Home from './components/Home.jsx'
 import Legal from './components/Legal.jsx'
+import Login from './components/Login.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import { PRIVACY, TERMS } from './legal.js'
 import { RM, scroller, scrollToTarget } from './lib.js'
@@ -12,6 +13,10 @@ import { RM, scroller, scrollToTarget } from './lib.js'
 gsap.registerPlugin(ScrollTrigger)
 
 const Verify = lazy(() => import('./components/Verify.jsx'))
+
+const prefetchVerify = () => {
+  import('./components/Verify.jsx')
+}
 
 const SECTIONS = [
   ['states', 'States'],
@@ -30,17 +35,25 @@ function Mark() {
   )
 }
 
+// Module-level flag: intro animation plays only on full page load, skipped on in-app route changes
+let hasPlayedNavIntro = false
+
 export default function App() {
   const { pathname } = useLocation()
   const home = pathname === '/'
   const [open, setOpen] = useState(false)
-  const [scrolled, setScrolled] = useState(false)
-  const [hidden, setHidden] = useState(false)
   const [current, setCurrent] = useState('')
+
+  const headerRef = useRef(null)
+  const logoRef = useRef(null)
+  const navRef = useRef(null)
+  const actionsRef = useRef(null)
+  const scrolledRef = useRef(false)
+  const hiddenRef = useRef(false)
   const openRef = useRef(false)
   openRef.current = open
 
-  // Smooth scroll (Lenis) wired into GSAP's ticker so ScrollTrigger stays in sync
+  // Smooth scroll (Lenis) wired into GSAP's ticker with lagSmoothing(0)
   useEffect(() => {
     if (RM) return
     const lenis = new Lenis({ lerp: 0.1, smoothWheel: true })
@@ -56,26 +69,162 @@ export default function App() {
     }
   }, [])
 
-  // New page: go to top, close the menu
+  // Prefetch Verify chunk on idle after first paint
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(() => prefetchVerify(), { timeout: 2500 })
+      return () => window.cancelIdleCallback && window.cancelIdleCallback(id)
+    } else {
+      const timer = setTimeout(prefetchVerify, 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [])
+
+  // New page: go to top, close the menu, reset header visibility
   useEffect(() => {
     if (scroller.lenis) scroller.lenis.scrollTo(0, { immediate: true, force: true })
     else window.scrollTo(0, 0)
     setOpen(false)
-    setHidden(false)
+    if (headerRef.current) {
+      headerRef.current.classList.remove('hide')
+      headerRef.current.classList.toggle('scrolled', window.scrollY > 8)
+    }
+    hiddenRef.current = false
+    scrolledRef.current = window.scrollY > 8
     setCurrent('')
     ScrollTrigger.refresh()
   }, [pathname])
 
-  // Header: solid after the top, tucks away on scroll down, returns on scroll up
+  // Change 3: Nav links emerge from the logo and title on full page load
+  useLayoutEffect(() => {
+    if (hasPlayedNavIntro || RM || window.innerWidth <= 820) return
+
+    let cancelled = false
+    document.fonts.ready.then(() => {
+      if (cancelled || hasPlayedNavIntro || window.innerWidth <= 820) return
+      hasPlayedNavIntro = true
+
+      const logo = logoRef.current
+      const nav = navRef.current
+      const actions = actionsRef.current
+      if (!logo || !nav) return
+
+      const links = Array.from(
+        nav.querySelectorAll('a:not(.nav-login-mobile):not(.nav-verify-mobile)')
+      )
+      if (!links.length) return
+
+      const logoRect = logo.getBoundingClientRect()
+      const logoTargetX = logoRect.right
+      const mark = logo.querySelector('.logo-mark') || logo
+
+      const tl = gsap.timeline({
+        onComplete: () => {
+          gsap.set(links, { clearProps: 'transform,opacity,willChange' })
+          if (actions) {
+            gsap.set(actions.children, { clearProps: 'transform,opacity,willChange' })
+          }
+        },
+      })
+
+      // Logo mark tiny pulse
+      tl.to(
+        mark,
+        {
+          scale: 1.08,
+          duration: 0.18,
+          ease: 'power1.out',
+          yoyo: true,
+          repeat: 1,
+        },
+        0
+      )
+
+      links.forEach((link, idx) => {
+        const linkRect = link.getBoundingClientRect()
+        const deltaX = logoTargetX - linkRect.left
+
+        gsap.set(link, {
+          x: deltaX,
+          scale: 0.7,
+          opacity: 0,
+          willChange: 'transform, opacity',
+        })
+
+        tl.to(
+          link,
+          {
+            x: 0,
+            scale: 1,
+            opacity: 1,
+            duration: 0.9,
+            ease: 'expo.out',
+          },
+          idx * 0.07
+        )
+      })
+
+      // Actions fade in and rise 8px staggered after links
+      if (actions) {
+        const actionItems = Array.from(actions.children).filter(
+          (el) => !el.classList.contains('nav-toggle')
+        )
+        gsap.set(actionItems, {
+          y: 8,
+          opacity: 0,
+          willChange: 'transform, opacity',
+        })
+
+        const actionsStartTime = links.length * 0.07 + 0.12
+        tl.to(
+          actionItems,
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.65,
+            stagger: 0.08,
+            ease: 'power3.out',
+          },
+          actionsStartTime
+        )
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Change 4.2: Header scroll listener - toggles classes directly on ref, zero per-frame setState
   useEffect(() => {
     let last = window.scrollY
+
     const onScroll = () => {
       const y = window.scrollY
-      setScrolled(y > 8)
-      if (y > 480 && y > last + 6 && !openRef.current) setHidden(true)
-      else if (y < last - 6 || y < 480) setHidden(false)
+      const isScrolled = y > 8
+      if (isScrolled !== scrolledRef.current) {
+        scrolledRef.current = isScrolled
+        if (headerRef.current) {
+          headerRef.current.classList.toggle('scrolled', isScrolled)
+        }
+      }
+
+      let isHidden = hiddenRef.current
+      if (y > 480 && y > last + 6 && !openRef.current) {
+        isHidden = true
+      } else if (y < last - 6 || y < 480) {
+        isHidden = false
+      }
+
+      if (isHidden !== hiddenRef.current) {
+        hiddenRef.current = isHidden
+        if (headerRef.current) {
+          headerRef.current.classList.toggle('hide', isHidden)
+        }
+      }
       last = y
     }
+
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
@@ -84,7 +233,11 @@ export default function App() {
   // Scroll progress bar
   useEffect(() => {
     if (RM) return
-    const st = ScrollTrigger.create({ start: 0, end: 'max', onUpdate: (s) => gsap.set('#pb', { scaleX: s.progress }) })
+    const st = ScrollTrigger.create({
+      start: 0,
+      end: 'max',
+      onUpdate: (s) => gsap.set('#pb', { scaleX: s.progress }),
+    })
     return () => st.kill()
   }, [pathname])
 
@@ -125,24 +278,77 @@ export default function App() {
 
   return (
     <>
-      <a className="skip" href="#main">Skip to content</a>
+      <a className="skip" href="#main">
+        Skip to content
+      </a>
       <div id="pb" aria-hidden="true" />
-      <header className={`site-header${scrolled ? ' scrolled' : ''}${hidden ? ' hide' : ''}${open ? ' menu-open' : ''}`}>
+      <header
+        ref={headerRef}
+        className={`site-header${open ? ' menu-open' : ''}`}
+      >
         <div className="w bar">
-          <Link className="logo" to="/"><Mark /><span>Proof<i>Pass</i></span></Link>
-          <nav id="primary-nav" className={`site-nav${open ? ' open' : ''}`} aria-label="Primary">
+          <Link ref={logoRef} className="logo" to="/">
+            <Mark />
+            <span>
+              Proof<i>Pass</i>
+            </span>
+          </Link>
+          <nav
+            ref={navRef}
+            id="primary-nav"
+            className={`site-nav${open ? ' open' : ''}`}
+            aria-label="Primary"
+          >
             {home ? (
               SECTIONS.map(([id, label]) => (
-                <a key={id} href={`#${id}`} aria-current={current === id ? 'true' : undefined}>{label}</a>
+                <a
+                  key={id}
+                  href={`#${id}`}
+                  aria-current={current === id ? 'true' : undefined}
+                >
+                  {label}
+                </a>
               ))
             ) : (
-              <Link to="/">Home</Link>
+              <Link to="/" aria-current={pathname === '/' ? 'page' : undefined}>
+                Home
+              </Link>
             )}
-            <Link to="/verify" className="nav-verify-mobile" style={{ display: open ? undefined : 'none' }}>Verify</Link>
+            <Link
+              to="/login"
+              className="b g sm nav-login-mobile"
+              style={{ display: open ? undefined : 'none' }}
+              onClick={() => setOpen(false)}
+            >
+              Log in
+            </Link>
+            <Link
+              to="/verify"
+              className="b sm nav-verify-mobile"
+              style={{ display: open ? undefined : 'none' }}
+              onClick={() => setOpen(false)}
+            >
+              Verify
+            </Link>
           </nav>
-          <div className="bar-actions">
+          <div ref={actionsRef} className="bar-actions">
             <ThemeToggle />
-            <Link to="/verify" className="b sm">Verify</Link>
+            <Link
+              to="/login"
+              className="b g sm"
+              aria-current={pathname === '/login' ? 'page' : undefined}
+            >
+              Log in
+            </Link>
+            <Link
+              to="/verify"
+              className="b sm"
+              aria-current={pathname === '/verify' ? 'page' : undefined}
+              onMouseEnter={prefetchVerify}
+              onFocus={prefetchVerify}
+            >
+              Verify
+            </Link>
             <button
               type="button"
               className="icon-btn nav-toggle"
@@ -151,7 +357,8 @@ export default function App() {
               aria-label={open ? 'Close menu' : 'Open menu'}
               onClick={() => setOpen((o) => !o)}
             >
-              <span /><span />
+              <span />
+              <span />
             </button>
           </div>
         </div>
@@ -159,19 +366,22 @@ export default function App() {
 
       <div key={pathname}>
         <Suspense fallback={<main id="main" style={{ minHeight: '70vh' }} />}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/verify" element={<Verify />} />
-          <Route path="/privacy" element={<Legal doc={PRIVACY} />} />
-          <Route path="/terms" element={<Legal doc={TERMS} />} />
-          <Route path="*" element={<Home />} />
-        </Routes>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/verify" element={<Verify />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/privacy" element={<Legal doc={PRIVACY} />} />
+            <Route path="/terms" element={<Legal doc={TERMS} />} />
+            <Route path="*" element={<Home />} />
+          </Routes>
         </Suspense>
       </div>
 
       <footer className="site-footer">
         <div className="w">
-          <span>ProofPass is a prototype. All data shown is sample data and nothing you type leaves this page.</span>
+          <span>
+            ProofPass is a prototype. All data shown is sample data and nothing you type leaves this page.
+          </span>
           <Link to="/privacy">Privacy Policy</Link>
           <Link to="/terms">Terms and Conditions</Link>
         </div>
