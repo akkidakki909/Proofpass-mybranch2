@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import gsap from 'gsap'
 import { RM } from '../lib.js'
 
 export default function HalfStepper({
@@ -19,111 +20,35 @@ export default function HalfStepper({
     if (typeof window === 'undefined') return false
     return window.innerWidth < 900
   })
-  const [hoveredStep, setHoveredStep] = useState(null)
+
   const dialRef = useRef(null)
+  const progressPathRef = useRef(null)
+  const readoutRef = useRef(null)
+  const readoutNumRef = useRef(null)
+  const readoutTitleRef = useRef(null)
+  const readoutStatusRef = useRef(null)
+  const nodeRefs = useRef([])
 
-  // Track state in refs for wheel handling
-  const stateRef = useRef({ current, previewStep, total: steps.length })
-  stateRef.current = { current, previewStep, total: steps.length }
+  // Active continuous progress & animation tracking
+  const activeStep = previewStep !== null ? previewStep : current
+  const progressObj = useRef({ value: activeStep })
+  const targetRef = useRef(activeStep)
+  const activeTweenRef = useRef(null)
+  const swappedRef = useRef(false)
+  const accRef = useRef(0)
+  const hoverRafRef = useRef(null)
 
-  // Responsive radius & mobile width listener
-  useEffect(() => {
-    const onResize = () => {
-      const h = window.innerHeight
-      const w = window.innerWidth
-      const r = Math.min(250, Math.max(150, Math.round(h * 0.25)))
-      setRadius(r)
-      setIsMobile(w < 900)
-      // Provide dial width variable for page padding
-      document.documentElement.style.setProperty('--dial-width', `${r + 56}px`)
-    }
-    onResize()
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  // Mouse wheel over dial: moves through later stages one at a time, falls through at ends
-  useEffect(() => {
-    const el = dialRef.current
-    if (!el) return
-
-    let acc = 0
-    let lastStep = 0
-    let lastEvt = 0
-
-    const onWheel = (e) => {
-      if (e.ctrlKey || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return
-      const dir = Math.sign(e.deltaY)
-      if (!dir) return
-
-      const { current: cur, previewStep: prev, total } = stateRef.current
-      const active = prev !== null ? prev : cur
-
-      // At bounds: fall through to page scroll
-      if (dir < 0 && active <= cur) return // already at current step, scrolling up falls through
-      if (dir > 0 && active >= total - 1) return // already at last step, scrolling down falls through
-
-      // Consume the event inside valid step transitions
-      e.preventDefault()
-      e.stopPropagation()
-
-      const now = performance.now()
-      if (now - lastEvt > 220) acc = 0
-      lastEvt = now
-      if (now - lastStep < 250) return // trackpad inertia debounce
-
-      acc += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
-      if (Math.abs(acc) < 28) return
-      acc = 0
-      lastStep = now
-
-      const nextTarget = active + dir
-      if (nextTarget === cur) {
-        onClearPreview()
-      } else if (nextTarget > cur && nextTarget < total) {
-        onPreview(nextTarget)
-      }
-    }
-
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [onPreview, onClearPreview])
-
-  // Keyboard navigation when dial has focus
-  const handleKeyDown = (e) => {
-    const active = previewStep !== null ? previewStep : current
-    if (e.key === 'ArrowDown') {
-      if (active < steps.length - 1) {
-        e.preventDefault()
-        onPreview(active + 1)
-      }
-    } else if (e.key === 'ArrowUp') {
-      if (active > current) {
-        e.preventDefault()
-        if (active - 1 === current) {
-          onClearPreview()
-        } else {
-          onPreview(active - 1)
-        }
-      }
-    }
-  }
-
-  const handleNodeClick = (id) => {
-    if (id === current) {
-      if (previewStep !== null) onClearPreview()
-      return
-    }
-    if (id < current) {
-      onSelect(id)
-      if (previewStep !== null) onClearPreview()
-    } else {
-      onPreview(id)
-    }
-  }
+  // Track props in refs for closures
+  const currentRef = useRef(current)
+  currentRef.current = current
+  const previewStepRef = useRef(previewStep)
+  previewStepRef.current = previewStep
+  const statusRef = useRef(status)
+  statusRef.current = status
+  const stepsRef = useRef(steps)
+  stepsRef.current = steps
 
   // Geometry calculations for true semicircle dial
-  // Center is at (0, cy)
   const cy = radius + 28
   const totalW = radius + 48
   const totalH = (radius + 28) * 2
@@ -133,37 +58,279 @@ export default function HalfStepper({
   const angleEnd = 76
   const angleSpan = angleEnd - angleStart
 
-  const getNodeCoords = (id) => {
+  const getNodeCoords = useCallback((id) => {
     const deg = angleStart + (id / (steps.length - 1)) * angleSpan
     const rad = (deg * Math.PI) / 180
     const x = radius * Math.cos(rad)
     const y = cy + radius * Math.sin(rad)
     return { x, y }
-  }
+  }, [radius, cy, steps.length])
 
   const pt0 = getNodeCoords(0)
-  const pt8 = getNodeCoords(8)
-
-  // Track arc path from step 0 to step 8
+  const pt8 = getNodeCoords(steps.length - 1)
   const trackPath = `M ${pt0.x} ${pt0.y} A ${radius} ${radius} 0 0 1 ${pt8.x} ${pt8.y}`
-  // Total arc length
   const totalArcLength = radius * ((angleSpan * Math.PI) / 180)
-  const progressRatio = Math.max(0, Math.min(1, current / (steps.length - 1)))
-  const strokeDashoffset = totalArcLength * (1 - progressRatio)
+  const totalArcLengthRef = useRef(totalArcLength)
+  totalArcLengthRef.current = totalArcLength
 
-  // Half disc SVG path: flat edge on left (x=0), circular arc bulging right
   const discR = radius + 22
   const discPath = `M 0 0 L 0 ${totalH} A ${discR} ${discR} 0 0 0 0 0 Z`
 
-  // Stage in readout: priority = hovered, then previewed, then current
-  const readoutStepId = hoveredStep !== null ? hoveredStep : previewStep !== null ? previewStep : current
-  const readoutStep = steps[readoutStepId] || steps[0]
+  // Direct DOM render function for ring progress, readout, and node transforms
+  const renderRing = useCallback((p) => {
+    const total = stepsRef.current.length
+    const rounded = Math.max(0, Math.min(total - 1, Math.round(p)))
+    const cur = currentRef.current
+    const stList = stepsRef.current
+    const stStatus = statusRef.current
 
-  let readoutStatus = 'In progress'
-  if (readoutStepId < current || status[readoutStepId] === 'done') {
-    readoutStatus = 'Done'
-  } else if (readoutStepId > current) {
-    readoutStatus = 'Locked'
+    // 1. Progress arc
+    if (progressPathRef.current) {
+      const progressRatio = Math.max(0, Math.min(1, p / (total - 1)))
+      const strokeDashoffset = totalArcLengthRef.current * (1 - progressRatio)
+      progressPathRef.current.style.strokeDashoffset = `${strokeDashoffset}px`
+    }
+
+    // 2. Readout text
+    if (readoutNumRef.current) {
+      readoutNumRef.current.textContent = `0${rounded}`
+    }
+    if (readoutTitleRef.current && stList[rounded]) {
+      readoutTitleRef.current.textContent = stList[rounded].title
+    }
+    if (readoutStatusRef.current) {
+      let label = 'In progress'
+      if (rounded < cur || stStatus[rounded] === 'done') {
+        label = 'Done'
+      } else if (rounded > cur) {
+        label = 'Locked'
+      }
+      readoutStatusRef.current.className = `half-dial-stage-status m status-${label.toLowerCase().replace(/\s+/g, '-')}`
+      const spanEl = readoutStatusRef.current.querySelector('span:last-child')
+      if (spanEl) spanEl.textContent = label
+    }
+
+    // 3. Node transforms and classes
+    for (let i = 0; i < total; i++) {
+      const btn = nodeRefs.current[i]
+      if (!btn) continue
+
+      const dist = Math.abs(p - i)
+      const scale = 1 + 0.14 * Math.max(0, 1 - dist)
+      btn.style.transform = `translate3d(-50%, -50%, 0) scale(${scale.toFixed(3)})`
+
+      const isDone = i < cur || stStatus[i] === 'done'
+      const isCurrent = i === cur && rounded === cur
+      const isPreviewed = rounded === i && i > cur
+      const isLocked = i > cur && !isPreviewed
+
+      btn.classList.toggle('node-current', isCurrent)
+      btn.classList.toggle('node-previewed', isPreviewed)
+      btn.classList.toggle('node-done', isDone && !isCurrent)
+      btn.classList.toggle('node-locked', isLocked)
+    }
+  }, [])
+
+  // Smooth tween to target stage
+  const goToStage = useCallback((newTarget) => {
+    const cur = currentRef.current
+    const total = stepsRef.current.length
+    const clampedTarget = Math.max(cur, Math.min(total - 1, newTarget))
+
+    targetRef.current = clampedTarget
+    swappedRef.current = false
+
+    const movingEls = [
+      progressPathRef.current,
+      readoutRef.current,
+      ...nodeRefs.current.filter(Boolean),
+    ]
+    movingEls.forEach((el) => {
+      if (el) el.style.willChange = 'transform, opacity'
+    })
+
+    if (activeTweenRef.current) {
+      activeTweenRef.current.kill()
+    }
+
+    activeTweenRef.current = gsap.to(progressObj.current, {
+      value: clampedTarget,
+      duration: RM ? 0 : 0.75,
+      ease: 'power3.out',
+      overwrite: true,
+      onUpdate: () => {
+        const p = progressObj.current.value
+        renderRing(p)
+
+        // Swap React state once at halfway point so main card swaps in time
+        if (!swappedRef.current && Math.abs(p - clampedTarget) <= 0.5) {
+          swappedRef.current = true
+          if (clampedTarget === cur) {
+            onClearPreview()
+          } else {
+            onPreview(clampedTarget)
+          }
+        }
+      },
+      onComplete: () => {
+        if (!swappedRef.current) {
+          swappedRef.current = true
+          if (clampedTarget === cur) {
+            onClearPreview()
+          } else {
+            onPreview(clampedTarget)
+          }
+        }
+        movingEls.forEach((el) => {
+          if (el) el.style.willChange = 'auto'
+        })
+        activeTweenRef.current = null
+      },
+    })
+  }, [RM, onPreview, onClearPreview, renderRing])
+
+  // Responsive radius & mobile listener
+  useEffect(() => {
+    const onResize = () => {
+      const h = window.innerHeight
+      const w = window.innerWidth
+      const r = Math.min(250, Math.max(150, Math.round(h * 0.25)))
+      setRadius(r)
+      setIsMobile(w < 900)
+      document.documentElement.style.setProperty('--dial-width', `${r + 56}px`)
+    }
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // Sync external current/previewStep changes with the continuous progress value
+  useEffect(() => {
+    const desired = previewStep !== null ? previewStep : current
+    if (Math.abs(progressObj.current.value - desired) > 0.01 && (!activeTweenRef.current || !activeTweenRef.current.isActive())) {
+      targetRef.current = desired
+      progressObj.current.value = desired
+      renderRing(desired)
+    }
+  }, [current, previewStep, renderRing])
+
+  // Wheel listener on the ring
+  useEffect(() => {
+    const el = dialRef.current
+    if (!el) return
+
+    const onWheel = (e) => {
+      if (e.ctrlKey || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return
+
+      let dy = e.deltaY
+      if (e.deltaMode === 1) dy *= 16
+      else if (e.deltaMode === 2) dy *= window.innerHeight
+
+      const dir = Math.sign(dy)
+      if (!dir) return
+
+      const cur = currentRef.current
+      const target = targetRef.current
+      const total = stepsRef.current.length
+
+      // At bounds: fall through to page scroll without preventDefault
+      if (dir < 0 && target <= cur) {
+        accRef.current = 0
+        return
+      }
+      if (dir > 0 && target >= total - 1) {
+        accRef.current = 0
+        return
+      }
+
+      // Ring can move in this direction -> prevent page scroll
+      e.preventDefault()
+
+      // Reset accumulator if direction flips
+      if (Math.sign(accRef.current) !== 0 && Math.sign(accRef.current) !== dir) {
+        accRef.current = 0
+      }
+
+      // Ignore inertia until the current tween reaches about 70%
+      if (activeTweenRef.current && activeTweenRef.current.isActive()) {
+        if (activeTweenRef.current.progress() < 0.7) {
+          return
+        }
+      }
+
+      accRef.current += dy
+
+      // Trigger exactly one stage per notch or trackpad flick
+      const THRESHOLD = 32
+      if (Math.abs(accRef.current) >= THRESHOLD) {
+        accRef.current = 0
+        const nextStage = Math.max(cur, Math.min(total - 1, target + dir))
+        if (nextStage !== target) {
+          goToStage(nextStage)
+        }
+      }
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      if (activeTweenRef.current) activeTweenRef.current.kill()
+    }
+  }, [goToStage])
+
+  // Keyboard navigation
+  const handleKeyDown = (e) => {
+    const target = targetRef.current
+    const cur = currentRef.current
+    const total = stepsRef.current.length
+
+    if (e.key === 'ArrowDown') {
+      if (target < total - 1) {
+        e.preventDefault()
+        goToStage(target + 1)
+      }
+    } else if (e.key === 'ArrowUp') {
+      if (target > cur) {
+        e.preventDefault()
+        goToStage(target - 1)
+      }
+    }
+  }
+
+  // Node clicks
+  const handleNodeClick = (id) => {
+    const cur = currentRef.current
+    if (id === cur) {
+      if (targetRef.current !== cur) {
+        goToStage(cur)
+      }
+      return
+    }
+    if (id < cur) {
+      onSelect(id)
+      if (previewStepRef.current !== null) onClearPreview()
+      targetRef.current = id
+      progressObj.current.value = id
+      renderRing(id)
+    } else {
+      goToStage(id)
+    }
+  }
+
+  // Hover handlers: coalesce with rAF, never update during tween
+  const handleNodeMouseEnter = (id) => {
+    if (activeTweenRef.current && activeTweenRef.current.isActive()) return
+    if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current)
+    hoverRafRef.current = requestAnimationFrame(() => {
+      renderRing(id)
+    })
+  }
+
+  const handleNodeMouseLeave = () => {
+    if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current)
+    hoverRafRef.current = requestAnimationFrame(() => {
+      renderRing(progressObj.current.value)
+    })
   }
 
   // Mobile Chip Row (< 900px wide)
@@ -211,6 +378,15 @@ export default function HalfStepper({
     </nav>
   )
 
+  const initialReadoutId = activeStep
+  const initialReadoutStep = steps[initialReadoutId] || steps[0]
+  let initialStatus = 'In progress'
+  if (initialReadoutId < current || status[initialReadoutId] === 'done') {
+    initialStatus = 'Done'
+  } else if (initialReadoutId > current) {
+    initialStatus = 'Locked'
+  }
+
   // Desktop Semicircle Dial
   const desktopDial = (
     <aside
@@ -240,28 +416,32 @@ export default function HalfStepper({
 
         {/* Animated orange progress stroke */}
         <path
+          ref={progressPathRef}
           d={trackPath}
           className="half-dial-progress"
           style={{
             strokeDasharray: totalArcLength,
-            strokeDashoffset: RM ? 0 : strokeDashoffset,
+            strokeDashoffset: RM ? 0 : totalArcLength * (1 - Math.max(0, Math.min(1, activeStep / (steps.length - 1)))),
           }}
         />
       </svg>
 
       {/* Large Readout inside the half disc */}
-      <div className="half-dial-readout" aria-live="polite">
-        <div className="half-dial-stage-num m">0{readoutStepId}</div>
-        <div className="half-dial-stage-title">{readoutStep.title}</div>
-        <div className={`half-dial-stage-status m status-${readoutStatus.toLowerCase().replace(/\s+/g, '-')}`}>
+      <div className="half-dial-readout" ref={readoutRef} aria-live="polite">
+        <div className="half-dial-stage-num m" ref={readoutNumRef}>0{initialReadoutId}</div>
+        <div className="half-dial-stage-title" ref={readoutTitleRef}>{initialReadoutStep.title}</div>
+        <div
+          ref={readoutStatusRef}
+          className={`half-dial-stage-status m status-${initialStatus.toLowerCase().replace(/\s+/g, '-')}`}
+        >
           <span className="half-dial-status-dot" />
-          <span>{readoutStatus}</span>
+          <span>{initialStatus}</span>
         </div>
       </div>
 
       {/* 9 Numbered Circular Nodes along the arc */}
       <div className="half-dial-nodes">
-        {steps.map((st) => {
+        {steps.map((st, i) => {
           const { x, y } = getNodeCoords(st.id)
           const isDone = st.id < current || status[st.id] === 'done'
           const isCurrent = st.id === current && previewStep === null
@@ -276,17 +456,19 @@ export default function HalfStepper({
           return (
             <button
               key={st.id}
+              ref={(el) => (nodeRefs.current[i] = el)}
               type="button"
               className={`half-node-btn ${nodeClass}`}
               style={{
                 left: `${x}px`,
                 top: `${y}px`,
+                transform: `translate3d(-50%, -50%, 0) scale(${st.id === activeStep ? 1.14 : 1})`,
               }}
               onClick={() => handleNodeClick(st.id)}
-              onMouseEnter={() => setHoveredStep(st.id)}
-              onMouseLeave={() => setHoveredStep(null)}
-              onFocus={() => setHoveredStep(st.id)}
-              onBlur={() => setHoveredStep(null)}
+              onMouseEnter={() => handleNodeMouseEnter(st.id)}
+              onMouseLeave={handleNodeMouseLeave}
+              onFocus={() => handleNodeMouseEnter(st.id)}
+              onBlur={handleNodeMouseLeave}
               aria-label={`Step 0${st.id}: ${st.title} (${isDone ? 'Done' : isCurrent ? 'In progress' : isPreviewed ? 'Previewed' : 'Locked'})`}
               aria-current={isCurrent ? 'step' : undefined}
               title={
@@ -328,7 +510,6 @@ export default function HalfStepper({
     </aside>
   )
 
-  // Portal into document.body so transformed ancestors do not affect fixed positioning
   if (typeof document === 'undefined') return null
 
   return (
@@ -343,4 +524,3 @@ export default function HalfStepper({
     </>
   )
 }
-

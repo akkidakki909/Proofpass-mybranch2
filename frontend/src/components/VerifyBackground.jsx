@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import gsap from 'gsap'
 import { RM } from '../lib.js'
 
 export default function VerifyBackground({ currentStep = 0 }) {
@@ -45,14 +46,13 @@ export default function VerifyBackground({ currentStep = 0 }) {
     }
   }, [])
 
-  // Particle canvas simulation
+  // Particle canvas simulation on gsap.ticker
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    let animId = null
     let paused = false
 
     // Mouse coordinates (scaled to CSS pixels)
@@ -72,13 +72,13 @@ export default function VerifyBackground({ currentStep = 0 }) {
     window.addEventListener('pointermove', onPointerMove, { passive: true })
     window.addEventListener('pointerleave', onPointerLeave, { passive: true })
 
-    // DPR capped at 2
-    let dpr = Math.min(window.devicePixelRatio || 1, 2)
+    // DPR capped at 1.5
+    let dpr = Math.min(window.devicePixelRatio || 1, 1.5)
     let width = window.innerWidth
     let height = window.innerHeight
 
     const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2)
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5)
       width = window.innerWidth
       height = window.innerHeight
       canvas.width = Math.floor(width * dpr)
@@ -90,8 +90,30 @@ export default function VerifyBackground({ currentStep = 0 }) {
     resize()
     window.addEventListener('resize', resize)
 
+    // Pre-render a glow sprite once on an offscreen canvas
+    const glowSprite = document.createElement('canvas')
+    const glowSize = 32
+    glowSprite.width = Math.round(glowSize * dpr)
+    glowSprite.height = Math.round(glowSize * dpr)
+    const gCtx = glowSprite.getContext('2d')
+    gCtx.scale(dpr, dpr)
+    const gGrad = gCtx.createRadialGradient(glowSize / 2, glowSize / 2, 1, glowSize / 2, glowSize / 2, glowSize / 2)
+    if (isDark) {
+      gGrad.addColorStop(0, 'rgba(232, 128, 63, 0.85)')
+      gGrad.addColorStop(0.3, 'rgba(232, 128, 63, 0.4)')
+      gGrad.addColorStop(1, 'rgba(232, 128, 63, 0)')
+    } else {
+      gGrad.addColorStop(0, 'rgba(165, 105, 45, 0.75)')
+      gGrad.addColorStop(0.3, 'rgba(232, 160, 90, 0.25)')
+      gGrad.addColorStop(1, 'rgba(232, 160, 90, 0)')
+    }
+    gCtx.fillStyle = gGrad
+    gCtx.beginPath()
+    gCtx.arc(glowSize / 2, glowSize / 2, glowSize / 2, 0, Math.PI * 2)
+    gCtx.fill()
+
     // Setup particles
-    const PARTICLE_COUNT = 70
+    const PARTICLE_COUNT = 65
     const particles = []
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       particles.push({
@@ -127,26 +149,35 @@ export default function VerifyBackground({ currentStep = 0 }) {
     // Visibility change: pause when tab is hidden
     const onVisibilityChange = () => {
       paused = document.hidden
-      if (!paused) {
-        animId = requestAnimationFrame(loop)
-      }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
 
-    const loop = () => {
+    // Spatial grid configuration for near-neighbor lines
+    const CELL_SIZE = 80
+    const maxConnectDist = 78
+
+    const tick = (time, deltaTime) => {
       if (paused) return
 
+      // Delta time clamp (in 60fps unit factor)
+      const dtFactor = Math.min(deltaTime / (1000 / 60), 2.5)
+
       ctx.clearRect(0, 0, width, height)
+
+      // Spatial hash grid for fast neighbor lookup
+      const cols = Math.ceil(width / CELL_SIZE) + 1
+      const rows = Math.ceil(height / CELL_SIZE) + 1
+      const grid = new Map()
 
       // 1. Update particles and cursor repulsion
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i]
 
-        p.phase += 0.02
+        p.phase += 0.02 * dtFactor
         if (isDark) {
           // Drifting up embers
-          p.x += Math.sin(p.phase) * 0.28 + p.vx
-          p.y += p.vy
+          p.x += (Math.sin(p.phase) * 0.28 + p.vx) * dtFactor
+          p.y += p.vy * dtFactor
           if (p.y < -12) {
             p.y = height + 10
             p.x = Math.random() * width
@@ -155,8 +186,8 @@ export default function VerifyBackground({ currentStep = 0 }) {
           if (p.x > width + 12) p.x = -10
         } else {
           // Dust motes in sunlight shaft
-          p.x += Math.sin(p.phase) * 0.22 + p.vx
-          p.y += Math.cos(p.phase * 0.8) * 0.18 + p.vy
+          p.x += (Math.sin(p.phase) * 0.22 + p.vx) * dtFactor
+          p.y += (Math.cos(p.phase * 0.8) * 0.18 + p.vy) * dtFactor
           if (p.y < -12) p.y = height + 10
           if (p.y > height + 12) p.y = -10
           if (p.x < -12) p.x = width + 10
@@ -171,7 +202,7 @@ export default function VerifyBackground({ currentStep = 0 }) {
           const repelRadius = 110
 
           if (dist > 0.001 && dist < repelRadius) {
-            const force = (1 - dist / repelRadius) * 1.8
+            const force = (1 - dist / repelRadius) * 1.8 * dtFactor
             p.x += (dx / dist) * force
             p.y += (dy / dist) * force
 
@@ -188,53 +219,70 @@ export default function VerifyBackground({ currentStep = 0 }) {
           }
         }
 
-        // Draw particle
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
-        if (isDark) {
-          ctx.fillStyle = `rgba(232, 128, 63, ${p.alpha * 0.85})`
-          ctx.shadowColor = 'rgba(232, 128, 63, 0.4)'
-          ctx.shadowBlur = 6
-        } else {
-          ctx.fillStyle = `rgba(165, 105, 45, ${p.alpha * 0.65})`
-          ctx.shadowColor = 'rgba(232, 160, 90, 0.25)'
-          ctx.shadowBlur = 3
-        }
-        ctx.fill()
-        ctx.shadowBlur = 0
+        // Insert into spatial grid
+        const c = Math.floor(p.x / CELL_SIZE)
+        const r = Math.floor(p.y / CELL_SIZE)
+        const key = `${c},${r}`
+        if (!grid.has(key)) grid.set(key, [])
+        grid.get(key).push(p)
+
+        // Draw particle using fast pre-rendered glow sprite
+        const drawR = p.r * 2.8
+        ctx.globalAlpha = p.alpha
+        ctx.drawImage(glowSprite, p.x - drawR, p.y - drawR, drawR * 2, drawR * 2)
       }
+      ctx.globalAlpha = 1
 
-      // 2. Near-neighbour connections
-      const maxConnectDist = 78
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const p1 = particles[i]
-          const p2 = particles[j]
-          const dx = p1.x - p2.x
-          const dy = p1.y - p2.y
-          const dist = Math.hypot(dx, dy)
+      // 2. Near-neighbour connections via spatial grid
+      for (const [key, cellParticles] of grid.entries()) {
+        const [cxStr, cyStr] = key.split(',')
+        const cellX = parseInt(cxStr, 10)
+        const cellY = parseInt(cyStr, 10)
 
-          if (dist < maxConnectDist) {
-            const lineAlpha = (1 - dist / maxConnectDist) * (isDark ? 0.22 : 0.12)
-            ctx.strokeStyle = isDark
-              ? `rgba(232, 128, 63, ${lineAlpha})`
-              : `rgba(29, 26, 23, ${lineAlpha})`
-            ctx.lineWidth = 0.85
-            ctx.beginPath()
-            ctx.moveTo(p1.x, p1.y)
-            ctx.lineTo(p2.x, p2.y)
-            ctx.stroke()
+        // Check self and neighboring 4 cells (right, bottom-left, bottom, bottom-right)
+        const neighborKeys = [
+          key,
+          `${cellX + 1},${cellY}`,
+          `${cellX - 1},${cellY + 1}`,
+          `${cellX},${cellY + 1}`,
+          `${cellX + 1},${cellY + 1}`,
+        ]
+
+        for (let i = 0; i < cellParticles.length; i++) {
+          const p1 = cellParticles[i]
+
+          for (const nKey of neighborKeys) {
+            const nList = grid.get(nKey)
+            if (!nList) continue
+
+            const startJ = nKey === key ? i + 1 : 0
+            for (let j = startJ; j < nList.length; j++) {
+              const p2 = nList[j]
+              const dx = p1.x - p2.x
+              const dy = p1.y - p2.y
+              const dist = Math.hypot(dx, dy)
+
+              if (dist < maxConnectDist) {
+                const lineAlpha = (1 - dist / maxConnectDist) * (isDark ? 0.22 : 0.12)
+                ctx.strokeStyle = isDark
+                  ? `rgba(232, 128, 63, ${lineAlpha})`
+                  : `rgba(29, 26, 23, ${lineAlpha})`
+                ctx.lineWidth = 0.85
+                ctx.beginPath()
+                ctx.moveTo(p1.x, p1.y)
+                ctx.lineTo(p2.x, p2.y)
+                ctx.stroke()
+              }
+            }
           }
         }
       }
-
-      animId = requestAnimationFrame(loop)
     }
 
-    animId = requestAnimationFrame(loop)
+    gsap.ticker.add(tick)
 
     return () => {
-      if (animId) cancelAnimationFrame(animId)
+      gsap.ticker.remove(tick)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerleave', onPointerLeave)
       window.removeEventListener('resize', resize)
@@ -250,7 +298,7 @@ export default function VerifyBackground({ currentStep = 0 }) {
       style={{ '--step-progress': stepProgress }}
       aria-hidden="true"
     >
-      {/* a) Soft blurred colour blobs drifting slowly (CSS keyframes) */}
+      {/* a) Soft colour blobs with radial gradient falloff drifting slowly */}
       <div className="vb-blobs">
         <div className="vb-blob vb-blob-1" />
         <div className="vb-blob vb-blob-2" />

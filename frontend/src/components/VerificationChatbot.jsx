@@ -115,7 +115,12 @@ export default function VerificationChatbot({
 
       {/* EXPANDED CHATBOT WINDOW IN RIGHT CORNER */}
       {isOpen && (
-        <aside className="chatbot-window" role="dialog" aria-label="Live Verification Audit Chatbot">
+        <aside
+          className="chatbot-window"
+          role="dialog"
+          aria-label="Live Verification Audit Chatbot"
+          data-lenis-prevent
+        >
           {/* CHATBOT HEADER */}
           <div className="chatbot-header">
             <div className="chatbot-brand">
@@ -249,6 +254,7 @@ export default function VerificationChatbot({
             onScroll={handleScroll}
             tabIndex={0}
             aria-live="polite"
+            data-lenis-prevent
           >
             {/* INTRO MESSAGE FROM BOT */}
             <div className="chat-bubble bot-intro">

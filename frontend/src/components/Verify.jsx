@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import gsap from 'gsap'
 import Passport3D from './Passport3D.jsx'
@@ -7,7 +7,7 @@ import VerifyBackground from './VerifyBackground.jsx'
 import LockedStage from './LockedStage.jsx'
 import ErrorBoundary from './ErrorBoundary.jsx'
 import VerificationChatbot from './VerificationChatbot.jsx'
-import { RM } from '../lib.js'
+import { RM, scroller } from '../lib.js'
 import { L } from '../data.js'
 import {
   validateIntake,
@@ -63,9 +63,40 @@ export default function Verify() {
   const [previewStep, setPreviewStep] = useState(null)
   const [rattleCount, setRattleCount] = useState(0)
 
+  const isFirstMount = useRef(true)
+  const stepHeadingRef = useRef(null)
+
   // Clear preview automatically whenever the real step changes
   useEffect(() => {
     setPreviewStep(null)
+  }, [currentStep])
+
+  // Reset page and inner container scrolls to top immediately when currentStep changes
+  useLayoutEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false
+      return
+    }
+
+    if (scroller.lenis) {
+      scroller.lenis.scrollTo(0, { immediate: true, force: true })
+    } else {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    }
+
+    if (contentCardRef.current) {
+      const scrollContainers = contentCardRef.current.querySelectorAll(
+        '.table-card, .table-wrapper, .data-table-wrapper, [style*="overflow"], table'
+      )
+      scrollContainers.forEach((el) => {
+        el.scrollTop = 0
+        el.scrollLeft = 0
+      })
+    }
+
+    if (stepHeadingRef.current) {
+      stepHeadingRef.current.focus({ preventScroll: true })
+    }
   }, [currentStep])
 
   // Cursor spotlight on glass and background dot grid
@@ -455,7 +486,7 @@ export default function Verify() {
             <div className="step-card-header">
               <div>
                 <span className="k m">STEP 0{currentStep} / 08</span>
-                <h2>{STEP_DEFINITIONS[currentStep].title}</h2>
+                <h2 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>{STEP_DEFINITIONS[currentStep].title}</h2>
               </div>
               <div className="step-card-header-right">
                 <button
