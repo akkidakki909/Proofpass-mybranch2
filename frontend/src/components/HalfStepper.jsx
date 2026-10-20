@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import gsap from 'gsap'
-import { RM } from '../lib.js'
+import { RM, scroller } from '../lib.js'
+
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
 
 export default function HalfStepper({
   steps,
@@ -31,14 +33,16 @@ export default function HalfStepper({
 
   // Active continuous progress & animation tracking
   const activeStep = previewStep !== null ? previewStep : current
-  const progressObj = useRef({ value: activeStep })
-  const targetRef = useRef(activeStep)
-  const activeTweenRef = useRef(null)
-  const swappedRef = useRef(false)
-  const accRef = useRef(0)
-  const hoverRafRef = useRef(null)
+  const stateRef = useRef({
+    displayed: activeStep,
+    target: activeStep,
+    lastCommittedStage: activeStep,
+    isMoving: false,
+    snapTween: null,
+  })
+  const snapTimeoutRef = useRef(null)
 
-  // Track props in refs for closures
+  // Track props in refs for closures and ticker loop
   const currentRef = useRef(current)
   currentRef.current = current
   const previewStepRef = useRef(previewStep)
@@ -47,6 +51,20 @@ export default function HalfStepper({
   statusRef.current = status
   const stepsRef = useRef(steps)
   stepsRef.current = steps
+  const isMobileRef = useRef(isMobile)
+  isMobileRef.current = isMobile
+
+  // Ring geometry cache for capture-phase hit-testing
+  const ringGeoRef = useRef({
+    active: false,
+    centerX: 0,
+    centerY: 0,
+    radius: 0,
+    width: 0,
+    hintTop: 0,
+    hintBottom: 0,
+    hintRight: 0,
+  })
 
   // Geometry calculations for true semicircle dial
   const cy = radius + 28
@@ -75,6 +93,43 @@ export default function HalfStepper({
 
   const discR = radius + 22
   const discPath = `M 0 0 L 0 ${totalH} A ${discR} ${discR} 0 0 0 0 0 Z`
+
+  // Scroll main stage back to top and focus step heading without scrolling (Fix 2c)
+  const scrollToStageTop = useCallback(() => {
+    if (scroller.lenis) {
+      scroller.lenis.scrollTo(0, {
+        duration: RM ? 0 : 0.45,
+        easing: easeOutCubic,
+        force: true,
+        immediate: RM,
+      })
+    } else {
+      window.scrollTo({
+        top: 0,
+        behavior: RM ? 'auto' : 'smooth',
+      })
+    }
+
+    // Reset scroll position of inner containers inside the card (wide tables)
+    const innerContainers = document.querySelectorAll(
+      '.table-card, .table-wrap, .inner-scroll, .data-table-wrapper, .verify-step-card [style*="overflow"]'
+    )
+    innerContainers.forEach((el) => {
+      el.scrollLeft = 0
+      el.scrollTop = 0
+    })
+
+    // Keep step heading as focus target without scrolling
+    const heading = document.querySelector(
+      '.verify-step-heading, .verify-step-title, h2.step-title, [data-step-heading], .stage-heading'
+    )
+    if (heading) {
+      if (!heading.hasAttribute('tabindex')) {
+        heading.setAttribute('tabindex', '-1')
+      }
+      heading.focus({ preventScroll: true })
+    }
+  }, [])
 
   // Direct DOM render function for ring progress, readout, and node transforms
   const renderRing = useCallback((p) => {
@@ -110,7 +165,7 @@ export default function HalfStepper({
       if (spanEl) spanEl.textContent = label
     }
 
-    // 3. Node transforms and classes
+    // 3. Node transforms and classes (transform and opacity only)
     for (let i = 0; i < total; i++) {
       const btn = nodeRefs.current[i]
       if (!btn) continue
@@ -131,14 +186,14 @@ export default function HalfStepper({
     }
   }, [])
 
-  // Smooth tween to target stage
-  const goToStage = useCallback((newTarget) => {
-    const cur = currentRef.current
-    const total = stepsRef.current.length
-    const clampedTarget = Math.max(cur, Math.min(total - 1, newTarget))
+  // Toggle will-change and moving CSS class only while active
+  const setMoving = useCallback((moving) => {
+    if (stateRef.current.isMoving === moving) return
+    stateRef.current.isMoving = moving
 
-    targetRef.current = clampedTarget
-    swappedRef.current = false
+    if (dialRef.current) {
+      dialRef.current.classList.toggle('is-moving', moving)
+    }
 
     const movingEls = [
       progressPathRef.current,
@@ -146,191 +201,301 @@ export default function HalfStepper({
       ...nodeRefs.current.filter(Boolean),
     ]
     movingEls.forEach((el) => {
-      if (el) el.style.willChange = 'transform, opacity'
+      if (el) el.style.willChange = moving ? 'transform, opacity' : 'auto'
     })
+  }, [])
 
-    if (activeTweenRef.current) {
-      activeTweenRef.current.kill()
+  // Snap target to nearest stage with short ease
+  const snapToNearest = useCallback(() => {
+    const min = currentRef.current
+    const max = stepsRef.current.length - 1
+    const nearest = Math.max(min, Math.min(max, Math.round(stateRef.current.target)))
+
+    if (RM) {
+      stateRef.current.target = nearest
+      stateRef.current.displayed = nearest
+      setMoving(false)
+      renderRing(nearest)
+      return
     }
 
-    activeTweenRef.current = gsap.to(progressObj.current, {
-      value: clampedTarget,
-      duration: RM ? 0 : 0.75,
+    stateRef.current.snapTween = gsap.to(stateRef.current, {
+      target: nearest,
+      duration: 0.35,
       ease: 'power3.out',
-      overwrite: true,
-      onUpdate: () => {
-        const p = progressObj.current.value
-        renderRing(p)
-
-        // Swap React state once at halfway point so main card swaps in time
-        if (!swappedRef.current && Math.abs(p - clampedTarget) <= 0.5) {
-          swappedRef.current = true
-          if (clampedTarget === cur) {
-            onClearPreview()
-          } else {
-            onPreview(clampedTarget)
-          }
-        }
-      },
       onComplete: () => {
-        if (!swappedRef.current) {
-          swappedRef.current = true
-          if (clampedTarget === cur) {
-            onClearPreview()
-          } else {
-            onPreview(clampedTarget)
-          }
+        stateRef.current.snapTween = null
+        if (Math.abs(stateRef.current.target - stateRef.current.displayed) < 0.005) {
+          stateRef.current.displayed = nearest
+          setMoving(false)
         }
-        movingEls.forEach((el) => {
-          if (el) el.style.willChange = 'auto'
-        })
-        activeTweenRef.current = null
       },
     })
-  }, [RM, onPreview, onClearPreview, renderRing])
+  }, [RM, renderRing, setMoving])
 
-  // Responsive radius & mobile listener
+  // Single animation loop (gsap.ticker) easing displayed toward target
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const onTick = (time, deltaTime) => {
+      const state = stateRef.current
+      const cur = currentRef.current
+      const total = stepsRef.current.length
+
+      // If fully settled and idle, do no work
+      if (
+        Math.abs(state.target - state.displayed) < 0.001 &&
+        !state.isMoving &&
+        !state.snapTween &&
+        !snapTimeoutRef.current
+      ) {
+        return
+      }
+
+      const dt = Math.min(0.1, (deltaTime || 16.6) / 1000)
+
+      if (RM) {
+        state.displayed = state.target
+        setMoving(false)
+      } else {
+        // Exponential smoothing: time-based factor identical at 60, 120, 144Hz
+        const factor = 1 - Math.exp(-18 * dt)
+        state.displayed += (state.target - state.displayed) * factor
+
+        if (
+          Math.abs(state.target - state.displayed) < 0.002 &&
+          !state.snapTween &&
+          !snapTimeoutRef.current
+        ) {
+          state.displayed = state.target
+          setMoving(false)
+        }
+      }
+
+      // Write directly to DOM elements
+      renderRing(state.displayed)
+
+      // Halfway point check to update React state
+      const focusedStage = Math.max(cur, Math.min(total - 1, Math.round(state.displayed)))
+      if (focusedStage !== state.lastCommittedStage) {
+        state.lastCommittedStage = focusedStage
+        if (focusedStage === cur) {
+          onClearPreview()
+        } else {
+          onPreview(focusedStage)
+        }
+        scrollToStageTop()
+      }
+    }
+
+    gsap.ticker.add(onTick)
+    return () => {
+      gsap.ticker.remove(onTick)
+    }
+  }, [renderRing, onClearPreview, onPreview, scrollToStageTop, setMoving])
+
+  // Responsive radius & geometry cache
   useEffect(() => {
     const onResize = () => {
       const h = window.innerHeight
       const w = window.innerWidth
       const r = Math.min(250, Math.max(150, Math.round(h * 0.25)))
       setRadius(r)
-      setIsMobile(w < 900)
+      const mobile = w < 900
+      setIsMobile(mobile)
+      isMobileRef.current = mobile
       document.documentElement.style.setProperty('--dial-width', `${r + 56}px`)
+
+      if (mobile) {
+        ringGeoRef.current.active = false
+      } else {
+        const centerY = h / 2
+        const pad = 46
+        const dialW = r + 56
+        const dialBottom = centerY + (r + 28)
+        ringGeoRef.current = {
+          active: true,
+          centerX: 0,
+          centerY,
+          radius: r + pad,
+          width: dialW,
+          hintTop: dialBottom - 10,
+          hintBottom: dialBottom + 50,
+          hintRight: 240,
+        }
+      }
     }
+
     onResize()
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // Sync external current/previewStep changes with the continuous progress value
+  // Sync external current/previewStep changes
   useEffect(() => {
     const desired = previewStep !== null ? previewStep : current
-    if (Math.abs(progressObj.current.value - desired) > 0.01 && (!activeTweenRef.current || !activeTweenRef.current.isActive())) {
-      targetRef.current = desired
-      progressObj.current.value = desired
+    if (Math.abs(stateRef.current.displayed - desired) > 0.01) {
+      stateRef.current.target = desired
+      stateRef.current.displayed = desired
+      stateRef.current.lastCommittedStage = desired
       renderRing(desired)
     }
   }, [current, previewStep, renderRing])
 
-  // Wheel listener on the ring
-  useEffect(() => {
-    const el = dialRef.current
-    if (!el) return
+  // Wheel handling logic with resistance near ends
+  const handleWheelDelta = useCallback((dy) => {
+    const min = currentRef.current
+    const max = stepsRef.current.length - 1
+    const TRAVEL_PER_STAGE = 110
 
-    const onWheel = (e) => {
-      if (e.ctrlKey || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return
+    if (stateRef.current.snapTween) {
+      stateRef.current.snapTween.kill()
+      stateRef.current.snapTween = null
+    }
+
+    let delta = dy / TRAVEL_PER_STAGE
+    const currentTarget = stateRef.current.target
+
+    // Resistance near ends
+    if (currentTarget < min && delta < 0) {
+      delta *= 0.15
+    } else if (currentTarget > max && delta > 0) {
+      delta *= 0.15
+    }
+
+    let nextTarget = currentTarget + delta
+    // Elastic bounds clamp
+    nextTarget = Math.max(min - 0.25, Math.min(max + 0.25, nextTarget))
+    stateRef.current.target = nextTarget
+
+    setMoving(true)
+
+    if (snapTimeoutRef.current) clearTimeout(snapTimeoutRef.current)
+    snapTimeoutRef.current = setTimeout(() => {
+      snapToNearest()
+    }, 140)
+  }, [setMoving, snapToNearest])
+
+  // Window-level capture-phase wheel listener: ring owns the wheel completely (Fix 2a)
+  useEffect(() => {
+    const isInsideRing = (clientX, clientY) => {
+      const geo = ringGeoRef.current
+      if (!geo.active) return false
+      if (clientX < 0) return false
+
+      // 1. Half-disc hit test
+      const dx = clientX
+      const dy = clientY - geo.centerY
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (clientX <= geo.width && dist <= geo.radius) {
+        return true
+      }
+
+      // 2. Hint text area under the dial
+      if (clientX <= geo.hintRight && clientY >= geo.hintTop && clientY <= geo.hintBottom) {
+        return true
+      }
+
+      return false
+    }
+
+    const onWindowWheelCapture = (e) => {
+      if (isMobileRef.current) return
+      if (!isInsideRing(e.clientX, e.clientY)) return
+
+      // Pointer is over ring region: prevent page scroll and own wheel completely
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+
+      if (e.ctrlKey) return
 
       let dy = e.deltaY
       if (e.deltaMode === 1) dy *= 16
       else if (e.deltaMode === 2) dy *= window.innerHeight
 
-      const dir = Math.sign(dy)
-      if (!dir) return
-
-      const cur = currentRef.current
-      const target = targetRef.current
-      const total = stepsRef.current.length
-
-      // At bounds: fall through to page scroll without preventDefault
-      if (dir < 0 && target <= cur) {
-        accRef.current = 0
-        return
-      }
-      if (dir > 0 && target >= total - 1) {
-        accRef.current = 0
-        return
-      }
-
-      // Ring can move in this direction -> prevent page scroll
-      e.preventDefault()
-
-      // Reset accumulator if direction flips
-      if (Math.sign(accRef.current) !== 0 && Math.sign(accRef.current) !== dir) {
-        accRef.current = 0
-      }
-
-      // Ignore inertia until the current tween reaches about 70%
-      if (activeTweenRef.current && activeTweenRef.current.isActive()) {
-        if (activeTweenRef.current.progress() < 0.7) {
-          return
-        }
-      }
-
-      accRef.current += dy
-
-      // Trigger exactly one stage per notch or trackpad flick
-      const THRESHOLD = 32
-      if (Math.abs(accRef.current) >= THRESHOLD) {
-        accRef.current = 0
-        const nextStage = Math.max(cur, Math.min(total - 1, target + dir))
-        if (nextStage !== target) {
-          goToStage(nextStage)
-        }
-      }
+      handleWheelDelta(dy)
     }
 
-    el.addEventListener('wheel', onWheel, { passive: false })
+    window.addEventListener('wheel', onWindowWheelCapture, { passive: false, capture: true })
     return () => {
-      el.removeEventListener('wheel', onWheel)
-      if (activeTweenRef.current) activeTweenRef.current.kill()
+      window.removeEventListener('wheel', onWindowWheelCapture, { capture: true })
+      if (snapTimeoutRef.current) clearTimeout(snapTimeoutRef.current)
+      if (stateRef.current.snapTween) stateRef.current.snapTween.kill()
     }
-  }, [goToStage])
+  }, [handleWheelDelta])
 
-  // Keyboard navigation
+  // Keyboard navigation using same target and easing
   const handleKeyDown = (e) => {
-    const target = targetRef.current
     const cur = currentRef.current
     const total = stepsRef.current.length
+    const currentTarget = Math.round(stateRef.current.target)
 
     if (e.key === 'ArrowDown') {
-      if (target < total - 1) {
+      if (currentTarget < total - 1) {
         e.preventDefault()
-        goToStage(target + 1)
+        stateRef.current.target = currentTarget + 1
+        setMoving(true)
+        if (snapTimeoutRef.current) clearTimeout(snapTimeoutRef.current)
+        snapTimeoutRef.current = setTimeout(() => {
+          snapToNearest()
+        }, 140)
       }
     } else if (e.key === 'ArrowUp') {
-      if (target > cur) {
+      if (currentTarget > cur) {
         e.preventDefault()
-        goToStage(target - 1)
+        stateRef.current.target = currentTarget - 1
+        setMoving(true)
+        if (snapTimeoutRef.current) clearTimeout(snapTimeoutRef.current)
+        snapTimeoutRef.current = setTimeout(() => {
+          snapToNearest()
+        }, 140)
       }
     }
   }
 
-  // Node clicks
+  // Node clicks using same target and easing
   const handleNodeClick = (id) => {
     const cur = currentRef.current
     if (id === cur) {
-      if (targetRef.current !== cur) {
-        goToStage(cur)
+      if (Math.round(stateRef.current.target) !== cur) {
+        stateRef.current.target = cur
+        setMoving(true)
+        if (snapTimeoutRef.current) clearTimeout(snapTimeoutRef.current)
+        snapTimeoutRef.current = setTimeout(() => {
+          snapToNearest()
+        }, 140)
       }
       return
     }
     if (id < cur) {
       onSelect(id)
       if (previewStepRef.current !== null) onClearPreview()
-      targetRef.current = id
-      progressObj.current.value = id
+      stateRef.current.target = id
+      stateRef.current.displayed = id
+      stateRef.current.lastCommittedStage = id
+      setMoving(false)
+      scrollToStageTop()
       renderRing(id)
     } else {
-      goToStage(id)
+      stateRef.current.target = id
+      setMoving(true)
+      if (snapTimeoutRef.current) clearTimeout(snapTimeoutRef.current)
+      snapTimeoutRef.current = setTimeout(() => {
+        snapToNearest()
+      }, 140)
     }
   }
 
-  // Hover handlers: coalesce with rAF, never update during tween
+  // Hover handlers: single coalesced write when idle, never while moving
   const handleNodeMouseEnter = (id) => {
-    if (activeTweenRef.current && activeTweenRef.current.isActive()) return
-    if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current)
-    hoverRafRef.current = requestAnimationFrame(() => {
-      renderRing(id)
-    })
+    if (stateRef.current.isMoving) return
+    renderRing(id)
   }
 
   const handleNodeMouseLeave = () => {
-    if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current)
-    hoverRafRef.current = requestAnimationFrame(() => {
-      renderRing(progressObj.current.value)
-    })
+    if (stateRef.current.isMoving) return
+    renderRing(stateRef.current.displayed)
   }
 
   // Mobile Chip Row (< 900px wide)
@@ -394,6 +559,7 @@ export default function HalfStepper({
       ref={dialRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      data-lenis-prevent
       aria-label="Pipeline progression dial"
       style={{
         width: `${totalW}px`,
@@ -439,7 +605,7 @@ export default function HalfStepper({
         </div>
       </div>
 
-      {/* 9 Numbered Circular Nodes along the arc */}
+      {/* Numbered Circular Nodes along the arc */}
       <div className="half-dial-nodes">
         {steps.map((st, i) => {
           const { x, y } = getNodeCoords(st.id)

@@ -45,6 +45,8 @@
   display: block;
   user-select: none;
   outline: none;
+  pointer-events: auto;
+  touch-action: none;
   overscroll-behavior: contain;
   filter: drop-shadow(0 14px 34px rgba(0, 0, 0, 0.16));
 }
@@ -60,13 +62,14 @@
   left: 0;
   top: 0;
   overflow: visible;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .half-dial-disc {
   fill: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
   stroke: color-mix(in srgb, var(--ink) 14%, transparent);
   stroke-width: 1;
+  pointer-events: auto;
 }
 
 .half-dial-track {
@@ -74,6 +77,7 @@
   stroke: color-mix(in srgb, var(--ink) 18%, transparent);
   stroke-width: 2;
   stroke-dasharray: 4 6;
+  pointer-events: none;
 }
 
 .half-dial-progress {
@@ -81,6 +85,7 @@
   stroke: var(--accent);
   stroke-width: 3.5;
   stroke-linecap: round;
+  pointer-events: none;
 }
 
 /* Large Readout inside the half disc */
@@ -93,7 +98,7 @@
   flex-direction: column;
   gap: 4px;
   max-width: 170px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .half-dial-stage-num {
@@ -252,8 +257,14 @@
   letter-spacing: 0.04em;
   color: var(--faint);
   text-transform: uppercase;
-  pointer-events: none;
+  pointer-events: auto;
   white-space: nowrap;
+  transition: opacity 0.2s ease;
+}
+
+.half-stepper-dial.is-moving .half-dial-hint {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .half-dial-mouse {
@@ -703,6 +714,57 @@
   border-radius: 4px;
   margin-top: -4px;
   background: transparent;
+}
+
+/* Fixed Locked Stage Pop-up */
+.locked-stage-popup-wrap {
+  position: fixed;
+  pointer-events: none;
+  z-index: 75;
+  transition: opacity 0.22s var(--ease), transform 0.22s var(--ease);
+}
+
+.locked-stage-popup-wrap.hidden {
+  opacity: 0;
+  pointer-events: none !important;
+  visibility: hidden;
+}
+
+.locked-stage-popup-wrap.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (min-width: 901px) {
+  .locked-stage-popup-wrap {
+    left: calc(50% + var(--dial-width, 0px) / 2);
+    top: 62vh;
+    transform: translate(-50%, -50%);
+    width: min(420px, calc(100vw - 40px));
+  }
+}
+
+@media (max-width: 900px) {
+  .locked-stage-popup-wrap {
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    width: calc(100vw - 32px);
+    max-width: 420px;
+  }
+}
+
+.locked-stage-popup-wrap .locked-hanging-tag {
+  pointer-events: auto;
+  width: 100%;
+  margin: 0;
+  box-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line);
+  outline: none;
+}
+
+.locked-stage-popup-wrap .locked-hanging-tag:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .locked-hanging-tag {

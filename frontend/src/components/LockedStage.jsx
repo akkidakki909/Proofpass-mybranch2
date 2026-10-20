@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import gsap from 'gsap'
 import { RM } from '../lib.js'
 
@@ -285,6 +286,7 @@ export default function LockedStage({
   const tagRef = useRef(null)
 
   const [dims, setDims] = useState({ w: 800, h: 560 })
+  const [isCardOnScreen, setIsCardOnScreen] = useState(true)
 
   // Simulation state held in refs (zero React re-renders in physics/drawing loop)
   const simRef = useRef({
@@ -678,11 +680,6 @@ export default function LockedStage({
       // Draw frame on canvas
       drawFrame(ctx, s, dpr, w, h)
 
-      // Update hanging tag position to follow the padlock smoothly
-      if (tagRef.current) {
-        tagRef.current.style.transform = `translate3d(-50%, -50%, 0) translate3d(${s.lock.x.toFixed(1)}px, ${(s.lock.y + 20).toFixed(1)}px, 0) rotate(${(s.lock.angle * 0.4).toFixed(3)}rad)`
-      }
-
       // If settled and entrance done, sleep to save CPU
       if (s.entranceDone && !s.mouse.active) {
         const totalEnergy = checkEnergy()
@@ -704,6 +701,7 @@ export default function LockedStage({
     const io = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         s.isOffscreen = !entry.isIntersecting
+        setIsCardOnScreen(entry.isIntersecting)
         if (!s.isOffscreen) wakeUp()
       }
     })
@@ -870,56 +868,66 @@ export default function LockedStage({
         aria-hidden="true"
       />
 
-      {/* Hanging Tag Assembly (Pointer-events auto for buttons) */}
+      {/* Decorative ring link on card under padlock */}
       <div
-        ref={tagRef}
-        className="padlock-and-tag-assembly"
+        className="hanging-tag-ring"
+        aria-hidden="true"
         style={{
-          left: `${cx}px`,
-          top: `${cy + 12}px`,
           position: 'absolute',
-          transform: 'translate3d(-50%, -50%, 0)',
-          zIndex: 25,
-          pointerEvents: 'auto',
+          left: `${cx}px`,
+          top: `${cy + 34}px`,
+          transform: 'translate(-50%, -50%)',
+          zIndex: 16,
         }}
-      >
-        {/* Ring connecting lock to tag */}
-        <div className="hanging-tag-ring" aria-hidden="true" />
+      />
 
-        {/* Hanging Tag */}
-        <div className="locked-hanging-tag" role="status">
-          <div className="tag-grommet" aria-hidden="true" />
-          <p className="tag-msg">
-            {isFar
-              ? `Complete the earlier stages first. Complete Step 0${prevStep}, ${prevTitle}, to unlock this stage.`
-              : `Complete Step 0${prevStep}, ${prevTitle}, to unlock this stage.`}
-          </p>
-          <div className="tag-btn-row">
-            <button
-              type="button"
-              className="b sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                onBack()
-              }}
+      {/* Fixed Pop-up rendered via portal into document.body */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className={`locked-stage-popup-wrap ${isCardOnScreen ? 'visible' : 'hidden'}`}
+            aria-hidden={!isCardOnScreen}
+          >
+            <div
+              className="locked-hanging-tag"
+              role="status"
+              aria-live="polite"
+              tabIndex={0}
             >
-              Back to step 0{currentStep}
-            </button>
-            {isFar && (
-              <button
-                type="button"
-                className="b g sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onLookAt(prevStep)
-                }}
-              >
-                Look at step 0{prevStep}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+              <div className="tag-grommet" aria-hidden="true" />
+              <p className="tag-msg">
+                {isFar
+                  ? `Complete the earlier stages first. Complete Step 0${prevStep}, ${prevTitle}, to unlock this stage.`
+                  : `Complete Step 0${prevStep}, ${prevTitle}, to unlock this stage.`}
+              </p>
+              <div className="tag-btn-row">
+                <button
+                  type="button"
+                  className="b sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onBack()
+                  }}
+                >
+                  Back to step 0{currentStep}
+                </button>
+                {isFar && (
+                  <button
+                    type="button"
+                    className="b g sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onLookAt(prevStep)
+                    }}
+                  >
+                    Look at step 0{prevStep}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

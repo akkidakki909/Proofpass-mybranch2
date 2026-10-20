@@ -71,6 +71,16 @@ export default function Verify() {
     setPreviewStep(null)
   }, [currentStep])
 
+  // Close verification log when real currentStep changes (skipping initial mount)
+  const isFirstStepChange = useRef(true)
+  useEffect(() => {
+    if (isFirstStepChange.current) {
+      isFirstStepChange.current = false
+      return
+    }
+    setShowLogChat(false)
+  }, [currentStep])
+
   // Reset page and inner container scrolls to top immediately when currentStep changes
   useLayoutEffect(() => {
     if (isFirstMount.current) {
