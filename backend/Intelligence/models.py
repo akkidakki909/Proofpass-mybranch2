@@ -1,6 +1,5 @@
 """
 Pydantic models matching the shared contract.
-All values are illustrative; never hardcode them.
 """
 from __future__ import annotations
 
@@ -57,7 +56,7 @@ class QuestionType(str, Enum):
 
 
 # ---------------------------------------------------------------------------
-# Input / intermediate models (shared contract)
+# Input / intermediate models
 # ---------------------------------------------------------------------------
 
 class Claim(BaseModel):
@@ -76,7 +75,7 @@ class Evidence(BaseModel):
     evidence_id: str = Field(default_factory=lambda: f"ev_{uuid.uuid4().hex[:8]}")
     claim_id: str
     skill: str
-    source_type: str  # e.g. "github_code", "certificate"
+    source_type: str = "github_code"
     file_path: Optional[str] = None
     file_exists: bool
     content_sha256: Optional[str] = None
@@ -90,7 +89,7 @@ class Evidence(BaseModel):
 class RepoMetadata(BaseModel):
     is_fork: bool = False
     fork_of: Optional[str] = None
-
+    default_branch: Optional[str] = None 
 
 class VerificationResult(BaseModel):
     provenance: TrustCeiling = TrustCeiling.UNVERIFIED
@@ -99,8 +98,15 @@ class VerificationResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Output models (shared contract)
+# Output models (Shared Contract)
 # ---------------------------------------------------------------------------
+
+class EvidenceChainItem(BaseModel):
+    file: Optional[str] = None
+    commit: Optional[str] = None
+    author_lines_pct: float = Field(ge=0.0, le=1.0, default=0.0)
+    source: Literal["repo", "coding_platform", "certificate"]
+
 
 class SkillAssessment(BaseModel):
     name: str
@@ -109,6 +115,7 @@ class SkillAssessment(BaseModel):
     evidence_ceiling: TrustCeiling = TrustCeiling.UNVERIFIED
     credibility: float = Field(ge=0.0, le=1.0, default=0.0)
     quiz_status: QuizStatus = QuizStatus.NOT_REQUIRED
+    evidence_chain: List[EvidenceChainItem] = Field(default_factory=list)
 
 
 class SkillGap(BaseModel):
@@ -116,20 +123,25 @@ class SkillGap(BaseModel):
     required_weight: float = Field(ge=0.0, le=1.0)
     current_state: ClaimState
     recommended_action: str
-    gap_reduction_pct: float = Field(ge=0.0, le=1.0, description="How much this action closes the gap")
+    gap_reduction_pct: float = Field(ge=0.0, le=1.0)
 
 
 class RoleMatchBreakdown(BaseModel):
     skill: str
     required_weight: float
     current_state: ClaimState
-    contribution: float  # weight * state_multiplier
+    contribution: float
     evidence_ids: List[str] = Field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Passport payload (shared contract)
-# ---------------------------------------------------------------------------
+class LearningPlanItem(BaseModel):
+    skill: str
+    rank: int = Field(ge=1)
+    action: str
+    resource_url: str
+    resource_type: Literal["imocha_assessment", "free_course", "project"]
+    gap_reduction_pct: float = Field(ge=0.0, le=1.0)
+
 
 class PassportPayload(BaseModel):
     passport_id: str = Field(default_factory=lambda: f"pp_{uuid.uuid4().hex[:12]}")
@@ -140,6 +152,9 @@ class PassportPayload(BaseModel):
     skill_gaps: List[SkillGap] = Field(default_factory=list)
     role_breakdown: List[RoleMatchBreakdown] = Field(default_factory=list)
     quiz_questions: List["QuizQuestion"] = Field(default_factory=list)
+    learning_plan: List[LearningPlanItem] = Field(default_factory=list)
+    signature: Optional[str] = None
+    public_key_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +183,7 @@ class QuizResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Target role / JD models
+# Target role models
 # ---------------------------------------------------------------------------
 
 class RequiredSkill(BaseModel):
@@ -188,9 +203,7 @@ class TargetRole(BaseModel):
         total = sum(s.weight for s in v)
         if total <= 0:
             return v
-        # Normalize to sum to 1.0
         return [s.model_copy(update={"weight": s.weight / total}) for s in v]
 
 
-# Update forward refs
 PassportPayload.model_rebuild()
